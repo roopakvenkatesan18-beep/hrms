@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Employee Attendance — CADD Tech Solutions HRMS</title>
+  <meta name="description" content="Per-employee attendance analytics for CADD Tech Solutions HRMS." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=5" />
+  <link rel="stylesheet" href="login-styles.css" />
+</head>
+
+<body>
+  <div class="app-shell">
+
+    <!-- ========== Sidebar Overlay ========== -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- ========== Sidebar ========== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img src="logo.jpg" alt="CADD Tech Solutions" />
+        <div class="sidebar-brand-text">CADD TECH<br /><span class="brand-hrms">HRMS</span></div>
+      </div>
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <button class="nav-item" data-page="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="9" />
+            <rect x="14" y="3" width="7" height="5" />
+            <rect x="14" y="12" width="7" height="9" />
+            <rect x="3" y="16" width="7" height="5" />
+          </svg>
+          Dashboard
+        </button>
+        <button class="nav-item active" data-page="attendance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          Attendance
+        </button>
+        <button class="nav-item" data-page="directory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          Employee Directory
+        </button>
+        <button class="nav-item" data-page="leave">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          Leave Management
+        </button>
+        <button class="nav-item" data-page="performance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+            <polyline points="17 6 23 6 23 12" />
+          </svg>
+          Performance
+        </button>
+        <button class="nav-item" data-page="announcements">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m3 11 18-5v12L3 14v-3z" />
+            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+          </svg>
+          Announcements
+        </button>
+        <button class="nav-item" data-page="chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+          </svg>
+          Team Chat
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        Authenticated · HR Access<br />
+        <a href="https://www.instagram.com/caddtechsolutions/" target="_blank" rel="noopener">@caddtechsolutions</a>
+      </div>
+    </aside>
+
+    <!-- ========== Main Area ========== -->
+    <div class="main-area">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-btn" id="menu-btn" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+          </button>
+          <span class="topbar-title">CADD Tech Solutions · Human Resource Management</span>
+        </div>
+        <div class="topbar-right">
+          <div class="user-info-chip">
+            <div class="avatar sm primary" id="user-avatar"></div>
+            <span id="user-name" style="font-size:0.8125rem;font-weight:500"></span>
+            <span class="user-role-badge hr" id="user-role-badge">HR</span>
+          </div>
+          <button class="logout-btn" id="logout-btn" title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 0 0 1-2-2V5a2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Sign Out</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ========== Content Area ========== -->
+      <main class="content">
+
+        <section id="page-attendance-detail">
+          <div class="page-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
+            <div>
+              <h1 id="att-detail-title">Employee Attendance</h1>
+              <p id="att-detail-sub"></p>
+            </div>
+            <button class="btn ghost sm" id="att-back-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;margin-right:0.25rem"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+              Back to Dashboard
+            </button>
+          </div>
+
+          <!-- Employee header -->
+          <div class="analytics-emp-header card">
+            <div class="analytics-emp-head-left">
+              <div class="avatar lg primary" id="analytics-emp-avatar"></div>
+              <div>
+                <div class="name" id="analytics-emp-name"></div>
+                <div class="title" id="analytics-emp-meta"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Month selector (last 4 months) -->
+          <div class="month-tabs" id="analytics-month-tabs"></div>
+
+          <!-- View tabs -->
+          <div class="view-toggle" id="analytics-view-tabs" style="margin-top:1rem">
+            <button class="active" data-view="statistics">Statistics</button>
+            <button data-view="calendar">Calendar</button>
+            <button data-view="table">Table</button>
+          </div>
+
+          <!-- Statistics view -->
+          <div id="analytics-statistics-view" class="analytics-view"></div>
+
+          <!-- Calendar view -->
+          <div id="analytics-calendar-view" class="analytics-view card" style="display:none;margin-top:1rem;padding:1.25rem">
+            <div class="att-cal-summary" id="analytics-cal-summary"></div>
+            <div class="att-cal-grid" id="analytics-cal-grid"></div>
+            <div class="att-cal-legend">
+              <span class="legend-item"><span class="legend-dot present"></span>Present</span>
+              <span class="legend-item"><span class="legend-dot late"></span>Late</span>
+              <span class="legend-item"><span class="legend-dot absent"></span>Absent</span>
+              <span class="legend-item"><span class="legend-dot none"></span>No data</span>
+            </div>
+          </div>
+
+          <!-- Table view -->
+          <div id="analytics-table-view" class="analytics-view card" style="display:none;margin-top:1rem;padding:0">
+            <div class="table-wrap">
+              <table>
+                <colgroup>
+                  <col class="c-date" />
+                  <col class="c-time" />
+                  <col class="c-time" />
+                  <col class="c-punch" />
+                  <col class="c-hours" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Punch Details</th>
+                    <th>Hours Worked</th>
+                  </tr>
+                </thead>
+                <tbody id="analytics-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
+
+    <!-- ========== Toast ========== -->
+    <div class="toast" id="toast" style="display:none"></div>
+
+  </div>
+
+  <!-- ========== Scripts ========== -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase.js?v=3"></script>
+  <script src="js/session.js?v=9"></script>
+  <script src="js/auth.js?v=7"></script>
+  <script src="js/roleGuard.js?v=3"></script>
+  <script src="js/api.js?v=14"></script>
+  <script src="data.js?v=2"></script>
+  <script src="app.js?v=29"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const profile = await RoleGuard.requireAuth(['hr']);
+
+      // Set user info in topbar
+      const initials = profile.name ? profile.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'HR';
+      document.getElementById('user-avatar').textContent = initials;
+      document.getElementById('user-name').textContent = profile.name || profile.empid;
+
+      document.getElementById('logout-btn').addEventListener('click', async () => { await Auth.logout(); });
+
+      // Read employee id from query string
+      const params = new URLSearchParams(window.location.search);
+      const empId = params.get('emp');
+      if (!empId) {
+        window.location.href = 'hr-dashboard.html';
+        return;
+      }
+
+      // Build the local employees list so getEmployee() works
+      const profiles = await API.fetchAllProfiles();
+      employees.length = 0;
+      employees.push(...profiles.map(p => ({
+        id: p.empid,
+        name: p.name,
+        title: p.role === 'hr' ? 'HR Manager' : 'CAD Trainer',
+        department: p.department || 'Training',
+        status: 'Active'
+      })));
+
+      // Fetch this employee's attendance data
+      const [monthly, last6, attendance] = await Promise.all([
+        API.fetchMonthlyAttendance(empId),
+        API.fetchLast6Months(empId),
+        API.fetchAttendance(empId)
+      ]);
+      state.monthlyAttendance = monthly || [];
+      state.last6Months = last6 || [];
+      state.attendance = attendance || [];
+
+      // Sidebar / menu wiring (lightweight)
+      document.getElementById('menu-btn')?.addEventListener('click', () => {
+        document.getElementById('sidebar')?.classList.add('open');
+        document.getElementById('sidebar-overlay')?.classList.add('open');
+      });
+      document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
+        document.getElementById('sidebar')?.classList.remove('open');
+        document.getElementById('sidebar-overlay')?.classList.remove('open');
+      });
+      document.getElementById('att-back-btn')?.addEventListener('click', () => {
+        window.location.href = 'hr-dashboard.html';
+      });
+      document.querySelectorAll('#sidebar-nav .nav-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+          if (btn.dataset.page === 'attendance') return; // already here
+          window.location.href = 'hr-dashboard.html';
+        });
+      });
+
+      // Initialise analytics interactions and render the selected employee
+      initAnalytics();
+      // Override the inline "back" button behaviour for this standalone page
+      document.getElementById('analytics-back-btn')?.addEventListener('click', () => {
+        window.location.href = 'hr-dashboard.html';
+      });
+
+      const emp = getEmployee(empId);
+      document.getElementById('att-detail-title').textContent = `${emp.name} — Attendance`;
+      document.getElementById('att-detail-sub').textContent = `ID: ${emp.id} · ${emp.department} · Last 4 months`;
+
+      selectAnalyticsEmployee(empId);
+    });
+  </script>
+
+</body>
+
+</html>

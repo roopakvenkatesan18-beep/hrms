@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HR Dashboard — CADD Tech Solutions HRMS</title>
+  <meta name="description" content="HR Dashboard for CADD Tech Solutions Human Resource Management System." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="login-styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+  <div class="app-shell">
+
+    <!-- ========== Sidebar Overlay ========== -->
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+    <!-- ========== Sidebar ========== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-brand">
+        <img src="logo.jpg" alt="CADD Tech Solutions" />
+        <div class="sidebar-brand-text">CADD TECH<br /><span class="brand-hrms">HRMS</span></div>
+      </div>
+      <nav class="sidebar-nav" id="sidebar-nav">
+        <button class="nav-item active" data-page="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="9" />
+            <rect x="14" y="3" width="7" height="5" />
+            <rect x="14" y="12" width="7" height="9" />
+            <rect x="3" y="16" width="7" height="5" />
+          </svg>
+          Dashboard
+        </button>
+        <button class="nav-item" data-page="analytics">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          Attendance
+        </button>
+        <button class="nav-item" data-page="announcements">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="m3 11 18-5v12L3 14v-3z" />
+            <path d="M11.6 16.8a3 3 0 1 1-5.8-1.6" />
+          </svg>
+          Announcements
+        </button>
+        <button class="nav-item" data-page="performance">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+            <polyline points="17 6 23 6 23 12" />
+          </svg>
+          Performance
+        </button>
+        <button class="nav-item" data-page="onboarding">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+          </svg>
+          Onboarding
+        </button>
+        <button class="nav-item" data-page="leave">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" />
+            <line x1="16" y1="2" x2="16" y2="6" />
+            <line x1="8" y1="2" x2="8" y2="6" />
+            <line x1="3" y1="10" x2="21" y2="10" />
+          </svg>
+          Leave Management
+        </button>
+        <button class="nav-item" data-page="chat">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path
+              d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+          </svg>
+          Team Chat
+        </button>
+        <button class="nav-item" data-page="directory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          Employee Directory
+        </button>
+        <button class="nav-item" data-page="emp-management"
+          style="border-top:1px solid rgba(255,255,255,0.1);margin-top:0.5rem;padding-top:0.75rem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <line x1="19" y1="8" x2="19" y2="14" />
+            <line x1="22" y1="11" x2="16" y2="11" />
+          </svg>
+          Add / Remove Employee
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        Authenticated · HR Access<br />
+        <a href="https://www.instagram.com/caddtechsolutions/" target="_blank" rel="noopener">@caddtechsolutions</a>
+      </div>
+    </aside>
+
+    <!-- ========== Main Area ========== -->
+    <div class="main-area">
+
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-btn" id="menu-btn" aria-label="Open menu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="6" x2="20" y2="6" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+          </button>
+          <span class="topbar-title">CADD Tech Solutions · Human Resource Management</span>
+        </div>
+        <div class="topbar-right">
+          <div class="user-info-chip">
+            <div class="avatar sm primary" id="user-avatar"></div>
+            <span id="user-name" style="font-size:0.8125rem;font-weight:500"></span>
+            <span class="user-role-badge hr" id="user-role-badge">HR</span>
+          </div>
+          <button class="logout-btn" id="logout-btn" title="Sign out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 0 0 1-2-2V5a2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            <span class="logout-text">Sign Out</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ========== Content Area ========== -->
+      <main class="content">
+
+        <!-- ===== DASHBOARD — ADMIN ===== -->
+        <section id="page-dashboard-admin">
+          <div class="page-header">
+            <h1>HR Dashboard</h1>
+            <p>Company-wide overview of people, attendance and requests.</p>
+          </div>
+          <div class="stats-grid cols-4" id="admin-dash-stats"></div>
+          <!-- Attendance (above leave approvals & announcements) -->
+          <div class="stats-grid cols-3" id="att-admin-stats" style="margin-top:1.5rem"></div>
+          <div class="grid-2" style="margin-top:1.5rem">
+            <div class="card span-2">
+              <div class="card-header">
+                <h3>Today's Attendance Log</h3>
+              </div>
+              <div class="card-body">
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Employee</th>
+                        <th>Check In</th>
+                        <th>Sessions</th>
+                        <th>Check Out</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody id="att-admin-table-body"></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-3" style="margin-top:1.5rem">
+            <div class="card">
+              <div class="card-header">
+                <h3>Pending Leave Approvals</h3><button class="btn ghost sm" data-page="leave">View all <svg
+                    viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    style="width:14px;height:14px">
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                    <polyline points="12 5 19 12 12 19" />
+                  </svg></button>
+              </div>
+              <div class="card-body" id="admin-pending-leaves"></div>
+            </div>
+            <div class="card">
+              <div class="card-header">
+                <h3>Announcements</h3>
+              </div>
+              <div class="card-body" id="admin-dash-announcements"></div>
+            </div>
+          </div>
+          <div class="grid-2">
+            <div class="card">
+              <div class="card-header">
+                <h3>Leaderboard Top 5</h3>
+              </div>
+              <div class="card-body" id="admin-dash-reviews"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== DIRECTORY ===== -->
+        <section id="page-directory" style="display:none">
+          <div class="page-header"
+            style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem">
+            <div>
+              <h1>Employee Directory</h1>
+              <p id="dir-count"></p>
+            </div>
+          </div>
+          <div class="form-row horizontal" style="margin-bottom:1.5rem">
+            <div class="search-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input class="input" id="dir-search" placeholder="Search by name, role or email..." />
+            </div>
+            <select class="select" id="dir-dept-filter" style="max-width:14rem">
+              <option value="all">All Departments</option>
+            </select>
+          </div>
+          <div class="employee-grid" id="employee-grid"></div>
+        </section>
+
+        <!-- ===== LEAVE — ADMIN ===== -->
+        <section id="page-leave-admin" style="display:none">
+          <div class="page-header">
+            <h1>Leave Management</h1>
+            <p>Review and approve employee leave requests.</p>
+          </div>
+          <div class="stats-grid cols-3" id="leave-admin-stats"></div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header">
+              <h3>Pending Approvals</h3>
+            </div>
+            <div class="card-body" id="leave-admin-pending"></div>
+          </div>
+        </section>
+
+        <!-- ===== ONBOARDING — ADMIN ===== -->
+        <section id="page-onboarding-admin" style="display:none">
+          <div class="page-header">
+            <h1>Onboarding Management</h1>
+            <p>Review employee onboarding requests and approve or reject them.</p>
+          </div>
+          <div class="stats-grid cols-3" id="onboarding-admin-stats"></div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+              <h3>All Onboarding Requests</h3>
+              <select class="select" id="onboarding-emp-filter" style="max-width:240px"></select>
+            </div>
+            <div class="card-body" id="onboarding-admin-list"></div>
+          </div>
+        </section>
+
+        <!-- Onboarding Detail Modal -->
+        <div class="modal-overlay" id="onboarding-detail-modal" style="display:none">
+          <div class="modal" style="max-width:560px">
+            <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+              <h3 id="onb-modal-title" style="margin:0">Onboarding Request</h3>
+              <button class="modal-close" id="onb-modal-close-btn" onclick="closeOnboardingModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
+            </div>
+            <div class="modal-body" id="onb-modal-body"></div>
+            <div class="modal-footer" id="onb-modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem"></div>
+          </div>
+        </div>
+
+        <!-- ===== PERFORMANCE — ADMIN ===== -->
+        <section id="page-performance-admin" style="display:none">
+          <div class="page-header">
+            <h1>Performance Leaderboard</h1>
+            <p>Staff rankings by accumulated points across all activities.</p>
+          </div>
+          <div class="stats-grid cols-3" id="perf-admin-stats"></div>
+          <div id="perf-admin-content"></div>
+        </section>
+
+        <!-- ===== ANNOUNCEMENTS ===== -->
+        <section id="page-announcements" style="display:none">
+          <div class="page-header">
+            <h1>Announcements</h1>
+            <p>Company news, holidays, events and policy updates.</p>
+          </div>
+          <div class="card" id="announce-form-card">
+            <div class="card-header">
+              <h3>Post Announcement</h3>
+            </div>
+            <div class="card-body">
+              <div class="leave-form">
+                <input class="input" id="announce-title" placeholder="Title" />
+                <textarea class="input" id="announce-body" rows="3" placeholder="Message..."></textarea>
+                <select class="select" id="announce-category">
+                  <option>Company</option>
+                  <option>Holiday</option>
+                  <option>Event</option>
+                  <option>Policy</option>
+                </select>
+                <button class="btn primary" id="announce-publish-btn">Publish</button>
+              </div>
+            </div>
+          </div>
+          <div id="announcements-list" style="display:flex;flex-direction:column;gap:1rem;margin-top:1.5rem"></div>
+        </section>
+
+        <!-- ===== CHAT ===== -->
+        <section id="page-chat" style="display:none">
+          <h1 class="page-header" style="margin-bottom:1rem">Team Chat</h1>
+          <div class="card chat-layout">
+            <div class="chat-sidebar">
+              <div style="padding:0.75rem;border-bottom:1px solid var(--border)">
+                <div class="search-wrap">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input class="input" id="chat-search" placeholder="Search conversations" />
+                </div>
+              </div>
+              <div id="chat-conversations"></div>
+            </div>
+            <div class="chat-main">
+              <div id="chat-partner-header"
+                style="padding:0.75rem 1rem;border-bottom:1px solid var(--border);font-weight:600;display:none"></div>
+              <div class="chat-messages" id="chat-messages">
+                <div class="empty-state">Select a conversation</div>
+              </div>
+              <div class="chat-input-row" id="chat-input-row" style="display:none">
+                <input class="input" id="chat-input" placeholder="Type a message..." />
+                <button class="btn primary" id="chat-send-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    style="width:16px;height:16px">
+                    <line x1="22" y1="2" x2="11" y2="13" />
+                    <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ===== ADD / REMOVE EMPLOYEE ===== -->
+        <section id="page-emp-management" style="display:none">
+          <div class="page-header">
+            <h1>Add / Remove Employee</h1>
+            <p>Manage employee accounts — create new logins or deactivate existing ones.</p>
+          </div>
+
+          <div class="emp-mgmt-grid">
+
+            <!-- ADD EMPLOYEE CARD -->
+            <div class="card">
+              <div class="card-header emp-mgmt-header">
+                <div class="emp-mgmt-icon emp-mgmt-icon-add">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" style="width:18px;height:18px">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                </div>
+                <h3>Add New Employee</h3>
+              </div>
+              <div class="card-body">
+                <form id="add-emp-inline-form" class="add-emp-form">
+                  <div class="add-emp-grid">
+                    <div class="add-emp-field">
+                      <label>Employee ID *</label>
+                      <input id="ae-empid" class="input" placeholder="e.g. 0006" required />
+                    </div>
+                    <div class="add-emp-field">
+                      <label>Full Name *</label>
+                      <input id="ae-name" class="input" placeholder="e.g. Arjun Raj" required />
+                    </div>
+                  </div>
+                  <div class="add-emp-grid">
+                    <div class="add-emp-field">
+                      <label>Role *</label>
+                      <select id="ae-role" class="select">
+                        <option value="employee">Employee</option>
+                        <option value="hr">HR Admin</option>
+                      </select>
+                    </div>
+                    <div class="add-emp-field">
+                      <label>Department *</label>
+                      <select id="ae-dept" class="select" required>
+                        <option value="" disabled selected>Select Department</option>
+                        <option value="HR">HR</option>
+                        <option value="MECH">MECH</option>
+                        <option value="Civil">Civil</option>
+                        <option value="IT">IT</option>
+                        <option value="Admin">Admin</option>
+                        <option value="General">General</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div class="add-emp-field">
+                    <label>Password *</label>
+                    <input id="ae-password" class="input" type="password" placeholder="Min. 8 characters" required />
+                    <p class="add-emp-hint">Login email: <strong id="ae-email-preview">—</strong></p>
+                  </div>
+                  <div id="ae-error" class="add-emp-error"></div>
+                  <div id="ae-success" class="add-emp-success"></div>
+                  <button type="submit" id="ae-submit-btn" class="btn primary" style="width:100%">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px;margin-right:0.375rem">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Create Employee Account
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- REMOVE EMPLOYEE CARD -->
+            <div class="card">
+              <div class="card-header emp-mgmt-header">
+                <div class="emp-mgmt-icon emp-mgmt-icon-remove">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" style="width:18px;height:18px">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <line x1="22" y1="11" x2="16" y2="11" />
+                  </svg>
+                </div>
+                <h3>Remove Employee</h3>
+              </div>
+              <div class="card-body">
+                <div class="remove-emp-body">
+                  <div class="add-emp-field">
+                    <label>Search Employee</label>
+                    <div class="search-wrap">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                      <input class="input" id="re-search" placeholder="Type Employee ID or name..." autocomplete="off" />
+                    </div>
+                  </div>
+                  <div id="re-employee-list" class="remove-emp-list">
+                  </div>
+                  <div id="re-message" class="remove-emp-msg"></div>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- end emp-mgmt-grid -->
+        </section>
+
+        <!-- ===== ATTENDANCE ===== -->
+        <section id="page-analytics" style="display:none">
+          <div class="page-header">
+            <h1>Attendance</h1>
+            <p>Select an employee to view their attendance analytics.</p>
+          </div>
+
+          <!-- Employee boxes -->
+          <div class="employee-grid" id="analytics-employee-grid"></div>
+
+          <!-- Detail panel -->
+          <div id="analytics-detail" style="display:none;margin-top:1.5rem">
+            <div class="analytics-emp-header card">
+              <div class="analytics-emp-head-left">
+                <div class="avatar lg primary" id="analytics-emp-avatar"></div>
+                <div>
+                  <div class="name" id="analytics-emp-name"></div>
+                  <div class="title" id="analytics-emp-meta"></div>
+                </div>
+              </div>
+              <button class="btn ghost sm" id="analytics-back-btn">← All Employees</button>
+            </div>
+
+            <!-- Month selector (last 4 months) -->
+            <div class="month-tabs" id="analytics-month-tabs"></div>
+
+            <!-- View tabs -->
+            <div class="view-toggle" id="analytics-view-tabs" style="margin-top:1rem">
+              <button class="active" data-view="statistics">Statistics</button>
+              <button data-view="calendar">Calendar</button>
+              <button data-view="table">Table</button>
+            </div>
+
+            <!-- Statistics view -->
+            <div id="analytics-statistics-view" class="analytics-view"></div>
+
+            <!-- Calendar view -->
+            <div id="analytics-calendar-view" class="analytics-view card" style="display:none;margin-top:1rem;padding:1.25rem">
+              <div class="att-cal-summary" id="analytics-cal-summary"></div>
+              <div class="att-cal-grid" id="analytics-cal-grid"></div>
+              <div class="att-cal-legend">
+                <span class="legend-item"><span class="legend-dot present"></span>Present</span>
+                <span class="legend-item"><span class="legend-dot late"></span>Late</span>
+                <span class="legend-item"><span class="legend-dot absent"></span>Absent</span>
+                <span class="legend-item"><span class="legend-dot none"></span>No data</span>
+              </div>
+            </div>
+
+            <!-- Table view -->
+            <div id="analytics-table-view" class="analytics-view card" style="display:none;margin-top:1rem;padding:0">
+              <div class="table-wrap">
+                <table>
+                  <colgroup>
+                    <col class="c-date" />
+                    <col class="c-time" />
+                    <col class="c-time" />
+                    <col class="c-punch" />
+                    <col class="c-hours" />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Check-in</th>
+                      <th>Check-out</th>
+                      <th>Punch Details</th>
+                      <th>Hours Worked</th>
+                    </tr>
+                  </thead>
+                  <tbody id="analytics-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+      </main>
+    </div>
+
+    <!-- ========== Toast ========== -->
+    <div class="toast" id="toast" style="display:none"></div>
+
+  </div>
+
+  <!-- ========== Employee Detail Modal ========== -->
+  <div class="modal-overlay" id="employee-modal" style="display:none">
+    <div class="modal" id="employee-modal-inner">
+      <div style="display:flex;gap:1rem;align-items:center">
+        <div class="avatar xl primary" id="modal-avatar"></div>
+        <div>
+          <h2 id="modal-name"></h2>
+          <p class="sub" id="modal-title"></p>
+          <span id="modal-badge"></span>
+        </div>
+      </div>
+      <p id="modal-about" style="margin:1rem 0;color:var(--muted-foreground);font-size:0.875rem"></p>
+      <div class="detail-grid">
+        <div class="detail-item">
+          <div class="label">Email</div>
+          <div class="value" id="modal-email"></div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Phone</div>
+          <div class="value" id="modal-phone"></div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Department</div>
+          <div class="value" id="modal-dept"></div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Location</div>
+          <div class="value" id="modal-location"></div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Joined</div>
+          <div class="value" id="modal-joined"></div>
+        </div>
+        <div class="detail-item">
+          <div class="label">Employment</div>
+          <div class="value" id="modal-employment"></div>
+        </div>
+      </div>
+      <div class="manager-box"><span style="color:var(--muted-foreground)">Reports to: </span><strong
+          id="modal-manager"></strong></div>
+      <button class="btn primary full" id="modal-close-btn">Close</button>
+    </div>
+  </div>
+
+  <!-- ========== Scripts ========== -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase.js?v=3"></script>
+  <script src="js/session.js?v=9"></script>
+  <script src="js/auth.js?v=7"></script>
+  <script src="js/roleGuard.js?v=3"></script>
+  <script src="js/api.js?v=15"></script>
+  <script src="data.js?v=3"></script>
+  <script src="app.js?v=34"></script>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      // Protect this page — only HR can access
+      const profile = await RoleGuard.requireAuth(['hr']);
+
+      // Set user info in topbar
+      const initials = profile.name ? profile.name.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'HR';
+      document.getElementById('user-avatar').textContent = initials;
+      document.getElementById('user-name').textContent = profile.name || profile.empid;
+
+      // Logout button
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await Auth.logout();
+      });
+
+      // HR uses their own empid, but views all records
+      window.CURRENT_USER_ID = profile.empid;
+      window.CURRENT_USER_UUID = profile.id;  // Auth UUID – used for Supabase chat queries
+
+      const existingUser = employees.find(e => e.id === profile.empid);
+      if (!existingUser) {
+        employees.push({
+          id: profile.empid,
+          name: profile.name || `Admin ${profile.empid}`,
+          role: profile.role,
+          department: profile.department || "HR",
+          email: `${profile.empid}@caddtech.com`,
+          status: "Active"
+        });
+      }
+
+      // Fetch ALL attendance data from Supabase (pass null for empid)
+      const allAttendanceData = await API.fetchAttendance(null);
+
+      if (allAttendanceData && allAttendanceData.length > 0) {
+        state.attendance = allAttendanceData;
+      } else {
+        state.attendance = [];
+      }
+
+      // Fetch ALL monthly data
+      const allMonthlyData = await API.fetchMonthlyAttendance(null);
+      state.monthlyAttendance = allMonthlyData || [];
+
+      // Fetch ALL previous-3-months data (emp_last6months)
+      const allLast6 = await API.fetchLast6Months(null);
+      state.last6Months = allLast6 || [];
+
+      // Set role to admin and initialize
+      state.role = 'admin';
+      
+      // Sync real employee data from Supabase DB to local employees list
+      await syncEmployeesFromSupabase();
+
+      // Load announcements from Supabase
+      await loadAnnouncements();
+
+      // Load all leave requests from Supabase (HR views all)
+      await loadLeaveRequests();
+
+      // Load all onboarding requests from Supabase (HR views all)
+      await loadOnboardingRequests();
+
+      // Load staff performance from Supabase
+      await loadStaffPerformance();
+      await ensureMonthlyPerfReset();
+      
+      initApp();
+    });
+
+    function initApp() {
+      // Sidebar nav
+      document.querySelectorAll('#sidebar-nav .nav-item').forEach(btn => {
+        btn.addEventListener('click', () => navigate(btn.dataset.page));
+      });
+
+      // Any element with data-page attribute
+      document.addEventListener('click', (e) => {
+        const navBtn = e.target.closest('[data-page]');
+        if (navBtn && !navBtn.closest('#sidebar-nav')) {
+          navigate(navBtn.dataset.page);
+        }
+      });
+
+      // Menu button (mobile)
+      document.getElementById('menu-btn')?.addEventListener('click', () => {
+        state.sidebarOpen = true;
+        document.getElementById('sidebar')?.classList.add('open');
+        document.getElementById('sidebar-overlay')?.classList.add('open');
+      });
+
+      // Sidebar overlay click
+      document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
+        state.sidebarOpen = false;
+        document.getElementById('sidebar')?.classList.remove('open');
+        document.getElementById('sidebar-overlay')?.classList.remove('open');
+      });
+
+      // Directory search/filter
+      document.getElementById('dir-search')?.addEventListener('input', renderDirectory);
+      document.getElementById('dir-dept-filter')?.addEventListener('change', renderDirectory);
+
+      // Profile save form submit
+      document.getElementById('profile-form')?.addEventListener('submit', saveProfile);
+
+      // Employee modal close
+      document.getElementById('modal-close-btn')?.addEventListener('click', () => {
+        const modal = document.getElementById('employee-modal');
+        if (modal) modal.style.display = 'none';
+      });
+      document.getElementById('employee-modal')?.addEventListener('click', (e) => {
+        if (e.target === document.getElementById('employee-modal')) {
+          document.getElementById('employee-modal').style.display = 'none';
+        }
+      });
+
+      // Leave submit
+      document.getElementById('leave-submit-btn')?.addEventListener('click', submitLeave);
+
+      // Onboarding detail modal close
+      document.getElementById('onb-modal-close-btn')?.addEventListener('click', closeOnboardingModal);
+      document.getElementById('onboarding-detail-modal')?.addEventListener('click', (e) => {
+        if (e.target === document.getElementById('onboarding-detail-modal')) {
+          closeOnboardingModal();
+        }
+      });
+
+      // Announcement publish
+      document.getElementById('announce-publish-btn')?.addEventListener('click', publishAnnouncement);
+
+      // Chat
+      document.getElementById('chat-search')?.addEventListener('input', renderChat);
+      document.getElementById('chat-send-btn')?.addEventListener('click', sendChatMessage);
+      document.getElementById('chat-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') sendChatMessage();
+      });
+
+      // Employee Analytics
+      initAnalytics();
+
+      // Initial render
+      navigate('dashboard');
+    }
+  </script>
+
+</body>
+</html>

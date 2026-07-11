@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CADD Tech Solutions — HRMS</title>
+  
+  <!-- Pre-load scripts for fast redirect check -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/session.js"></script>
+  
+  <style>
+    /* Simple loading state while determining where to route */
+    body {
+      margin: 0;
+      background: #f8fafc; /* match var(--background) */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, sans-serif;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid rgba(220, 38, 38, 0.2);
+      border-top-color: #dc2626; /* match var(--primary) */
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Fallback loading indicator while checking session -->
+  <div class="spinner"></div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      try {
+        const session = await Session.getSession();
+        
+        if (session) {
+          const profile = await Session.getProfile();
+          if (profile) {
+             // Valid session & profile, go to respective dashboard
+             window.location.replace(Session.getDashboardUrl(profile.role));
+             return;
+          }
+        }
+      } catch (err) {
+        console.error("Redirect check failed:", err);
+      }
+      
+      // If we fall through (no session, no profile, or error) -> go to login
+      window.location.replace('login.html');
+    });
+  </script>
+</body>
+</html>
