@@ -2328,6 +2328,7 @@ function renderPerformanceAdmin() {
 
 function renderPerformanceEmployee() {
   const el = document.getElementById("perf-emp-content");
+  if (!el) return;
   const myName = getEmployee(CURRENT_USER_ID).name;
   const myRecord = state.staffPerformance.find(r => r.empid && r.empid.toString().trim() === CURRENT_USER_ID.toString().trim())
     || state.staffPerformance.find(r => r.staff_name && r.staff_name.trim().toLowerCase() === myName.trim().toLowerCase());
