@@ -127,6 +127,10 @@
             <div class="card chart-card">
               <div class="chart-card-header">
                 <h3 style="margin:0;font-weight:600;font-size:1.1rem">Working Hours</h3>
+                <div class="chart-toggle-group">
+                  <button class="chart-toggle active-toggle" data-mode="Bar" id="hours-mode-bar">Bar</button>
+                  <button class="chart-toggle" data-mode="Line" id="hours-mode-line">Line</button>
+                </div>
               </div>
               <div class="chart-canvas-wrap">
                 <canvas id="hours-chart-canvas"></canvas>
@@ -761,6 +765,18 @@
         state.pieMode = 'Month';
         updateChartToggleStyles('pie-mode', 'Month');
         renderPieChart();
+      });
+
+      // Working Hours chart mode toggle (Bar = horizontal bar, Line = line chart)
+      document.getElementById('hours-mode-bar')?.addEventListener('click', () => {
+        state.chartType = 'Bar';
+        updateChartToggleStyles('hours-mode', 'Bar');
+        renderHoursChart();
+      });
+      document.getElementById('hours-mode-line')?.addEventListener('click', () => {
+        state.chartType = 'Line';
+        updateChartToggleStyles('hours-mode', 'Line');
+        renderHoursChart();
       });
 
       // Schedule form
