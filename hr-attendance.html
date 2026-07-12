@@ -244,7 +244,9 @@
         name: p.name,
         title: p.role === 'hr' ? 'HR Manager' : 'CAD Trainer',
         department: p.department || 'Training',
-        status: 'Active'
+        status: 'Active',
+        shiftCheckin: p.shift_checkin || null,
+        shiftCheckout: p.shift_checkout || null
       })));
 
       // Fetch this employee's attendance data
@@ -256,6 +258,13 @@
       state.monthlyAttendance = monthly || [];
       state.last6Months = last6 || [];
       state.attendance = attendance || [];
+
+      // Recompute Present/Late against each employee's assigned shift
+      applyShiftLate();
+
+      // Load approved WFH requests so the global resolver can fold them in
+      // as "Present WFH" across Statistics, Calendar and Table (any month)
+      await loadWfhRequests();
 
       // Sidebar / menu wiring (lightweight)
       document.getElementById('menu-btn')?.addEventListener('click', () => {
