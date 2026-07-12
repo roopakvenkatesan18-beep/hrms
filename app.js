@@ -609,18 +609,19 @@ function getPieData() {
 
   const myRecords = source.filter(a => a.employeeId === CURRENT_USER_ID);
 
-  let present = 0, late = 0, absent = 0;
+  let present = 0, wfh = 0, late = 0, absent = 0;
 
-  const tally = (r) => {
-    const st = resolveAttendance(CURRENT_USER_ID, r.date).status;
-    if (st === "Present WFH" || st === "Present") present++;
+  const tallyDate = (dateStr) => {
+    const st = resolveAttendance(CURRENT_USER_ID, dateStr).status;
+    if (st === "Present WFH") wfh++;
+    else if (st === "Present") present++;
     else if (st === "Late") late++;
     else absent++;
   };
 
   if (state.pieMode === "Month") {
     // Only use days that exist in the database
-    myRecords.forEach(tally);
+    myRecords.forEach(r => tallyDate(r.date));
   } else {
     // Week mode: last 7 days, but only count records that fall in the last 7 days
     const today = new Date();
@@ -629,11 +630,16 @@ function getPieData() {
 
     myRecords.forEach(r => {
       const recordDate = new Date(r.date);
-      if (recordDate >= sevenDaysAgo && recordDate <= today) tally(r);
+      if (recordDate >= sevenDaysAgo && recordDate <= today) tallyDate(r.date);
     });
   }
 
-  return { labels: ["Present", "Late", "Absent"], data: [present, late, absent], colors: ["#10b981", "#f59e0b", "#ef4444"] };
+  return {
+    labels: ["Present", "Present WFH", "Late", "Absent"],
+    data: [present, wfh, late, absent],
+    colors: ["#10b981", "#6366f1", "#f59e0b", "#ef4444"],
+    presentTotal: present + wfh
+  };
 }
 
 function renderPieChart() {
@@ -643,7 +649,7 @@ function renderPieChart() {
 
   if (state.pieChart) { state.pieChart.destroy(); state.pieChart = null; }
 
-  document.getElementById("pie-center-value").textContent = pd.data[0];
+  document.getElementById("pie-center-value").textContent = pd.presentTotal;
 
   state.pieChart = new Chart(canvas, {
     type: "doughnut",
@@ -681,14 +687,11 @@ function renderPieChart() {
 }
 
 function getHoursData() {
-  const source = (state.monthlyAttendance && state.monthlyAttendance.length > 0)
-    ? state.monthlyAttendance.filter(a => a.employeeId === CURRENT_USER_ID)
-    : state.attendance.filter(a => a.employeeId === CURRENT_USER_ID);
-  
   const data = [];
+  const colors = [];
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  
+
   // Last 7 days, but capped at the start of the month
   const sevenDaysAgo = new Date(today);
   sevenDaysAgo.setDate(today.getDate() - 6);
@@ -696,28 +699,43 @@ function getHoursData() {
 
   for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
     const dateStr = iso(d);
-    const record = source.find(a => a.date === dateStr);
-    
-    // Only push to data if the record exists (user requested "how day of data aviable")
-    if (record) {
-      let hours = 0;
-      if (record.overtime !== undefined && record.overtime > 0) {
-        hours = record.overtime;
-      } else if (record.checkIn && record.checkOut && record.checkIn !== "--:--" && record.checkOut !== "--:--" && record.checkIn !== "12:00 AM") {
-        const inH = timeStrToHours(record.checkIn);
-        const outH = timeStrToHours(record.checkOut);
+    const res = resolveAttendance(CURRENT_USER_ID, dateStr);
+
+    let hours = 0;
+    let color = "#3b82f6";
+
+    if (res.status === "Present WFH") {
+      // Purple bar for Work From Home, using the employee-provided times
+      color = "#6366f1";
+      if (res.checkIn && res.checkOut) {
+        const inH = parse24hTime(res.checkIn);
+        const outH = parse24hTime(res.checkOut);
+        if (inH && outH && (outH.h * 60 + outH.m) > (inH.h * 60 + inH.m)) {
+          hours = (outH.h * 60 + outH.m - (inH.h * 60 + inH.m)) / 60;
+        }
+      }
+    } else if (res.record) {
+      const rec = res.record;
+      if (rec.overtime !== undefined && rec.overtime > 0) {
+        hours = rec.overtime;
+      } else if (res.checkIn && res.checkOut && res.checkIn !== "--:--" && res.checkOut !== "--:--" && res.checkIn !== "12:00 AM") {
+        const inH = timeStrToHours(res.checkIn);
+        const outH = timeStrToHours(res.checkOut);
         if (outH > inH) hours = outH - inH;
       }
-      data.push({ date: dateStr.slice(5), hours: Number(hours.toFixed(1)) });
     }
+
+    data.push({ date: dateStr.slice(5), hours: Number(hours.toFixed(1)) });
+    colors.push(color);
   }
-  
+
   // If no data exists at all, just provide a dummy empty state so the chart doesn't crash
   if (data.length === 0) {
     data.push({ date: iso(today).slice(5), hours: 0 });
+    colors.push("#3b82f6");
   }
-  
-  return data;
+
+  return { data, colors };
 }
 
 function renderHoursChart() {
@@ -732,16 +750,16 @@ function renderHoursChart() {
   const config = {
     type: isBar ? "bar" : "line",
     data: {
-      labels: hd.map(d => d.date),
+      labels: hd.data.map(d => d.date),
       datasets: [{
         label: "hours",
-        data: hd.map(d => d.hours),
-        backgroundColor: "#3b82f6",
-        borderColor: "#3b82f6",
+        data: hd.data.map(d => d.hours),
+        backgroundColor: hd.colors,
+        borderColor: hd.colors,
         borderWidth: isBar ? 0 : 2,
         fill: isBar ? false : true,
         pointBackgroundColor: "#fff",
-        pointBorderColor: "#3b82f6",
+        pointBorderColor: hd.colors,
         pointBorderWidth: 2,
         borderRadius: 6,
         barPercentage: 0.9,
@@ -1012,12 +1030,32 @@ function openEmployeeModal(empId) {
 function renderAttendanceAdmin() {
   const todayStr = iso(new Date());
   const todayAll = state.attendance.filter(a => a.date === todayStr);
-  const present = todayAll.filter(a => {
+
+  // Build a display set: scraped records + employees with an approved WFH
+  // today that have no scraped record (so HR sees them as Present WFH too).
+  const displayMap = {};
+  todayAll.forEach(a => { displayMap[a.employeeId] = a; });
+  (state.wfhRequests || []).forEach(w => {
+    if (w.status !== "Approved") return;
+    const from = new Date(w.from), to = new Date(w.to), t = new Date(todayStr);
+    if (t >= from && t <= to && !displayMap[w.employeeId]) {
+      displayMap[w.employeeId] = {
+        employeeId: w.employeeId,
+        checkIn: w.fromTime || "—",
+        checkOut: w.toTime || "—",
+        punches: [],
+        wfhOnly: true
+      };
+    }
+  });
+  const displayRows = Object.values(displayMap);
+
+  const present = displayRows.filter(a => {
     const st = resolveAttendance(a.employeeId, todayStr).status;
     return st !== "Absent";
   }).length;
-  const onTime = todayAll.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Present").length;
-  const late = todayAll.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Late").length;
+  const onTime = displayRows.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Present").length;
+  const late = displayRows.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Late").length;
   const withData = new Set(state.attendance.map(a => a.employeeId)).size;
   const totalStaff = withData || employees.length;
 
@@ -1027,8 +1065,8 @@ function renderAttendanceAdmin() {
     statCardHTML("Late Arrivals", late, null, "chart3");
 
   const tbody = document.getElementById("att-admin-table-body");
-  if (todayAll.length) {
-    tbody.innerHTML = todayAll.map(a => {
+  if (displayRows.length) {
+    tbody.innerHTML = displayRows.map(a => {
       const emp = getEmployee(a.employeeId);
       const res = resolveAttendance(a.employeeId, todayStr);
       let sessionsHTML = "";
