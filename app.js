@@ -1296,22 +1296,11 @@ function renderSundayLeaveInfo() {
   const totalSundays = sundayDates.length;
   if (totalSundays === 0) { el.style.display = "none"; return; }
 
-  const sources = [...(state.attendance || []), ...(state.monthlyAttendance || []), ...(state.last6Months || [])]
-    .filter(a => a.employeeId === CURRENT_USER_ID);
-
+  // A Sunday counts as "used" only when an approved leave request covers it.
+  // WFH / Present Sundays must NOT consume the Sunday-leave allowance.
   const used = new Set();
   sundayDates.forEach(sd => {
-    if (sources.some(a => a.date === sd)) used.add(sd);
-  });
-
-  // Also count approved leave requests that fall on a Sunday this month
-  (state.leaveRequests || []).forEach(l => {
-    if (l.employeeId !== CURRENT_USER_ID || l.status !== "Approved") return;
-    const from = new Date(l.from), to = new Date(l.to);
-    sundayDates.forEach(sd => {
-      const dt = new Date(sd);
-      if (dt >= from && dt <= to) used.add(sd);
-    });
+    if (getSundayLeaveForDate(CURRENT_USER_ID, sd)) used.add(sd);
   });
 
   const MAX_SUNDAY_LEAVE = 2;
