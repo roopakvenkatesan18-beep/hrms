@@ -1458,7 +1458,6 @@ function renderLeaveEmployee() {
   const approvedDays = myLeaves.filter(l => l.status === "Approved").reduce((s, l) => s + l.days, 0);
 
   document.getElementById("leave-emp-stats").innerHTML =
-    statCardHTML("Leave Balance", 18 - approvedDays, "of 18 days", "chart5") +
     statCardHTML("Used", approvedDays, "Approved this year") +
     statCardHTML("Pending", myLeaves.filter(l => l.status === "Pending").length, null, "chart3");
 
