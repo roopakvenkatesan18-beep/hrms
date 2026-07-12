@@ -153,40 +153,34 @@ function applyShiftLate() {
   });
 }
 
-/* ---- 12-hour (AM/PM) shift time helpers ---- */
-function populateShiftSelectOptions() {
-  const hours = [1,2,3,4,5,6,7,8,9,10,11,12];
-  const mins = ['00','15','30','45'];
-  ['ae-shift-ci-h','ae-shift-co-h','edit-emp-shift-ci-h','edit-emp-shift-co-h'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el && el.options.length === 0) el.innerHTML = hours.map(h => `<option value="${h}">${h}</option>`).join('');
-  });
-  ['ae-shift-ci-m','ae-shift-co-m','edit-emp-shift-ci-m','edit-emp-shift-co-m'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el && el.options.length === 0) el.innerHTML = mins.map(m => `<option value="${m}">${m}</option>`).join('');
-  });
-}
-
-/* Read the three selects and return "HH:MM:SS" (24h), or null if missing */
-function readShift12(hId, mId, apId) {
-  const hEl = document.getElementById(hId), mEl = document.getElementById(mId), apEl = document.getElementById(apId);
-  if (!hEl || !mEl || !apEl) return null;
-  let h = parseInt(hEl.value, 10); const m = parseInt(mEl.value, 10); const ap = apEl.value;
+/* ---- Shift time helpers: plain time input + AM/PM dropdown ---- */
+/* Read a time input (12h value, e.g. "09:00") plus an AM/PM select and
+   return "HH:MM:SS" (24h). Returns null if the input is empty. */
+function readShiftInput(inputId, apId) {
+  const el = document.getElementById(inputId);
+  const apEl = document.getElementById(apId);
+  if (!el || !el.value) return null;
+  let [h, m] = el.value.split(':');
+  h = parseInt(h, 10); m = parseInt(m, 10);
   if (isNaN(h) || isNaN(m)) return null;
+  const ap = apEl ? apEl.value : 'AM';
   if (ap === 'PM' && h !== 12) h += 12;
   if (ap === 'AM' && h === 12) h = 0;
   return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':00';
 }
 
-/* Fill the three selects from a stored "HH:MM:SS" (24h) value */
-function fillShift12(value24, hId, mId, apId) {
-  const hEl = document.getElementById(hId), mEl = document.getElementById(mId), apEl = document.getElementById(apId);
-  if (!hEl || !mEl || !apEl || !value24) return;
-  let [h, m] = value24.split(':'); h = parseInt(h, 10); m = parseInt(m, 10);
+/* Fill a time input + AM/PM select from a stored "HH:MM:SS" (24h) value */
+function fillShiftInput(value24, inputId, apId) {
+  const el = document.getElementById(inputId);
+  const apEl = document.getElementById(apId);
+  if (!el || !value24) return;
+  let [h, m] = value24.split(':');
+  h = parseInt(h, 10); m = parseInt(m, 10);
   let ap = 'AM';
   if (h >= 12) { ap = 'PM'; if (h > 12) h -= 12; }
   if (h === 0) h = 12;
-  hEl.value = h; mEl.value = String(m).padStart(2,'0'); apEl.value = ap;
+  el.value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  if (apEl) apEl.value = ap;
 }
 
 /* ---------- Toast ---------- */
@@ -284,7 +278,6 @@ let _allProfiles = [];   // cached profiles for remove search
 
 async function renderEmpManagement() {
   // ---- ADD EMPLOYEE FORM ----
-  populateShiftSelectOptions();
   const addForm = document.getElementById('add-emp-inline-form');
   const empidInput = document.getElementById('ae-empid');
   const emailPreview = document.getElementById('ae-email-preview');
@@ -331,8 +324,8 @@ async function renderEmpManagement() {
       // Shift is required for employees; ignored for HR
       let shiftCheckin = null, shiftCheckout = null;
       if (role === 'employee') {
-        shiftCheckin = readShift12('ae-shift-ci-h', 'ae-shift-ci-m', 'ae-shift-ci-ap');
-        shiftCheckout = readShift12('ae-shift-co-h', 'ae-shift-co-m', 'ae-shift-co-ap');
+        shiftCheckin = readShiftInput('ae-shift-ci-t', 'ae-shift-ci-ap');
+        shiftCheckout = readShiftInput('ae-shift-co-t', 'ae-shift-co-ap');
         if (!shiftCheckin || !shiftCheckout) { errEl.textContent = 'Please enter shift check-in and check-out times for employees.'; return; }
       }
 
@@ -456,8 +449,8 @@ function openEditEmployee(empid, name) {
   if (deptEl) deptEl.value = p.department || '';
   if (shiftRow) shiftRow.style.display = (p.role === 'employee') ? 'flex' : 'none';
   if (shiftRow && shiftRow.style.display !== 'none') {
-    fillShift12(p.shift_checkin, 'edit-emp-shift-ci-h', 'edit-emp-shift-ci-m', 'edit-emp-shift-ci-ap');
-    fillShift12(p.shift_checkout, 'edit-emp-shift-co-h', 'edit-emp-shift-co-m', 'edit-emp-shift-co-ap');
+    fillShiftInput(p.shift_checkin, 'edit-emp-shift-ci-t', 'edit-emp-shift-ci-ap');
+    fillShiftInput(p.shift_checkout, 'edit-emp-shift-co-t', 'edit-emp-shift-co-ap');
   }
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
@@ -474,8 +467,8 @@ async function saveEditEmployee() {
   const department = deptEl ? deptEl.value.trim() : '';
   let shiftCheckin = null, shiftCheckout = null;
   if (shiftRow && shiftRow.style.display !== 'none') {
-    shiftCheckin = readShift12('edit-emp-shift-ci-h', 'edit-emp-shift-ci-m', 'edit-emp-shift-ci-ap');
-    shiftCheckout = readShift12('edit-emp-shift-co-h', 'edit-emp-shift-co-m', 'edit-emp-shift-co-ap');
+    shiftCheckin = readShiftInput('edit-emp-shift-ci-t', 'edit-emp-shift-ci-ap');
+    shiftCheckout = readShiftInput('edit-emp-shift-co-t', 'edit-emp-shift-co-ap');
   }
 
   if (!department) { errEl.style.display = 'block'; errEl.textContent = 'Department is required.'; return; }
