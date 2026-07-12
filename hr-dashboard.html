@@ -59,11 +59,11 @@
           </svg>
           Performance
         </button>
-        <button class="nav-item" data-page="onboarding">
+        <button class="nav-item" data-page="travel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          Onboarding
+          Travel Allowance
         </button>
         <button class="nav-item" data-page="leave">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -244,30 +244,41 @@
         </section>
 
         <!-- ===== ONBOARDING — ADMIN ===== -->
-        <section id="page-onboarding-admin" style="display:none">
+        <section id="page-travel-admin" style="display:none">
           <div class="page-header">
-            <h1>Onboarding Management</h1>
-            <p>Review employee onboarding requests and approve or reject them.</p>
+            <h1>Travel Allowance Management</h1>
+            <p>Review employee travel allowance requests and approve or reject them.</p>
           </div>
-          <div class="stats-grid cols-3" id="onboarding-admin-stats"></div>
+          <div class="stats-grid cols-3" id="travel-admin-stats"></div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header"><h3>Reimbursement Rate Settings</h3></div>
+            <div class="card-body" style="display:flex;align-items:flex-end;gap:1rem;flex-wrap:wrap">
+              <div>
+                <label class="label" for="reimb-rate">Rate per km (₹)</label>
+                <input class="input" id="reimb-rate" type="number" min="0" step="0.01" placeholder="e.g. 8" style="max-width:180px" />
+              </div>
+              <button class="btn primary" id="reimb-rate-save">Save Rate</button>
+              <span class="sub" id="reimb-rate-note" style="color:var(--muted-foreground)"></span>
+            </div>
+          </div>
           <div class="card" style="margin-top:1.5rem">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-              <h3>All Onboarding Requests</h3>
-              <select class="select" id="onboarding-emp-filter" style="max-width:240px"></select>
+              <h3>All Travel Allowance Requests</h3>
+              <select class="select" id="travel-emp-filter" style="max-width:240px"></select>
             </div>
-            <div class="card-body" id="onboarding-admin-list"></div>
+            <div class="card-body" id="travel-admin-list"></div>
           </div>
         </section>
 
-        <!-- Onboarding Detail Modal -->
-        <div class="modal-overlay" id="onboarding-detail-modal" style="display:none">
+        <!-- Travel Allowance Detail Modal -->
+        <div class="modal-overlay" id="travel-detail-modal" style="display:none">
           <div class="modal" style="max-width:560px">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-              <h3 id="onb-modal-title" style="margin:0">Onboarding Request</h3>
-              <button class="modal-close" id="onb-modal-close-btn" onclick="closeOnboardingModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
+              <h3 id="ta-modal-title" style="margin:0">Travel Allowance Request</h3>
+              <button class="modal-close" id="ta-modal-close-btn" onclick="closeTravelAllowanceModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
             </div>
-            <div class="modal-body" id="onb-modal-body"></div>
-            <div class="modal-footer" id="onb-modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem"></div>
+            <div class="modal-body" id="ta-modal-body"></div>
+            <div class="modal-footer" id="ta-modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem"></div>
           </div>
         </div>
 
@@ -714,8 +725,8 @@
       // Load all leave requests from Supabase (HR views all)
       await loadLeaveRequests();
 
-      // Load all onboarding requests from Supabase (HR views all)
-      await loadOnboardingRequests();
+      // Load all travel allowance requests from Supabase (HR views all)
+      await loadTravelAllowanceRequests();
 
       // Load staff performance from Supabase
       await loadStaffPerformance();
@@ -773,11 +784,11 @@
       // Leave submit
       document.getElementById('leave-submit-btn')?.addEventListener('click', submitLeave);
 
-      // Onboarding detail modal close
-      document.getElementById('onb-modal-close-btn')?.addEventListener('click', closeOnboardingModal);
-      document.getElementById('onboarding-detail-modal')?.addEventListener('click', (e) => {
-        if (e.target === document.getElementById('onboarding-detail-modal')) {
-          closeOnboardingModal();
+      // Travel Allowance detail modal close
+      document.getElementById('ta-modal-close-btn')?.addEventListener('click', closeTravelAllowanceModal);
+      document.getElementById('travel-detail-modal')?.addEventListener('click', (e) => {
+        if (e.target === document.getElementById('travel-detail-modal')) {
+          closeTravelAllowanceModal();
         }
       });
 
