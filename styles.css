@@ -2254,6 +2254,7 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 .col-manage-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted-foreground); margin-bottom: 0.6rem; }
 .col-manage-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
