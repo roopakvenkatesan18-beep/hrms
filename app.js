@@ -2627,7 +2627,7 @@ function dayRecordsTableHTML(recs) {
       ? '<span class="badge absent">Absent</span>'
       : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
 
-    return `<tr class="row-status-${r.status}">
+    return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
@@ -2942,7 +2942,7 @@ function renderAnalyticsTable(stats) {
       ? '<span class="badge absent">Absent</span>'
       : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
 
-    return `<tr class="row-status-${r.status}">
+    return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
