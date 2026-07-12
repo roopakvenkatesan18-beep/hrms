@@ -610,10 +610,10 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 .edit-emp-btn svg { width: 13px; height: 13px; }
 .edit-emp-btn:hover { background: #dbeafe; }
 
-/* 12-hour AM/PM shift time selectors */
-.shift-time { display: flex; align-items: center; gap: 0.35rem; flex-wrap: nowrap; }
-.shift-time .select { width: auto; min-width: 3.4rem; flex: 0 0 auto; padding-left: 0.4rem; padding-right: 0.4rem; }
-.shift-colon { color: #94a3b8; font-weight: 600; }
+/* 12-hour AM/PM shift time selectors (time input + AM/PM select) */
+.shift-time { display: flex; align-items: center; gap: 0.5rem; flex-wrap: nowrap; }
+.shift-time .input { flex: 1 1 auto; min-width: 0; }
+.shift-time .select { width: auto; flex: 0 0 auto; min-width: 4.5rem; padding-left: 0.5rem; padding-right: 0.5rem; }
 
 /* Schedule slot items */
 .schedule-slot-item { border: 1px solid #e5e7eb; border-radius: 0.75rem; padding: 0.875rem 1rem; background: #f9fafb; display: flex; align-items: center; gap: 0.75rem; }
