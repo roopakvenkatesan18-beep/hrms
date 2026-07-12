@@ -10,6 +10,7 @@ const state = {
   sidebarOpen: false,
   attendance: seedInitialAttendance(),
   leaveRequests: [],
+  wfhRequests: [],
   travelRequests: [],
   travelFilterEmp: "all",
   reimbursementRate: 0,
@@ -201,6 +202,7 @@ const ALL_PAGES = [
   "directory", "profile",
    "attendance-employee",
    "leave-admin", "leave-employee",
+   "wfh-admin", "wfh-employee",
    "travel-admin", "travel-employee",
    "performance-admin", "performance-employee",
    "announcements", "chat", "timetable", "emp-management", "analytics"
@@ -233,6 +235,8 @@ function navigate(pageId) {
     sectionId = role === "admin" ? "page-attendance-admin" : "page-attendance-employee";
   } else if (pageId === "leave") {
     sectionId = role === "admin" ? "page-leave-admin" : "page-leave-employee";
+  } else if (pageId === "wfh") {
+    sectionId = role === "admin" ? "page-wfh-admin" : "page-wfh-employee";
   } else if (pageId === "travel") {
     sectionId = role === "admin" ? "page-travel-admin" : "page-travel-employee";
   } else if (pageId === "performance") {
@@ -260,6 +264,9 @@ function renderCurrentPage(pageId) {
       break;
     case "leave":
       state.role === "admin" ? renderLeaveAdmin() : renderLeaveEmployee();
+      break;
+    case "wfh":
+      state.role === "admin" ? renderWfhAdmin() : renderWfhEmployee();
       break;
     case "travel":
       state.role === "admin" ? renderTravelAllowanceAdmin() : renderTravelAllowanceEmployee();
@@ -603,58 +610,26 @@ function getPieData() {
   const myRecords = source.filter(a => a.employeeId === CURRENT_USER_ID);
 
   let present = 0, late = 0, absent = 0;
-  
+
+  const tally = (r) => {
+    const st = resolveAttendance(CURRENT_USER_ID, r.date).status;
+    if (st === "Work From Home" || st === "Present") present++;
+    else if (st === "Late") late++;
+    else absent++;
+  };
+
   if (state.pieMode === "Month") {
     // Only use days that exist in the database
-    myRecords.forEach(r => {
-      if (r.status === "Absent") {
-        absent++;
-        return;
-      }
-      if (!r.checkIn || r.checkIn === "--:--" || r.checkIn === "12:00 AM") {
-        absent++;
-        return;
-      }
-      
-      // Parse checkIn time to determine Late vs Present
-      let isLate = false;
-      const parsed = parseAMPMTime(r.checkIn);
-      if (parsed) {
-        if (parsed.h > 11 || (parsed.h === 11 && parsed.m > 0)) {
-          isLate = true;
-        }
-      } else if (r.status === "Late") {
-        isLate = true;
-      }
-
-      if (isLate) {
-        late++;
-      } else {
-        // If check in is there then present even if check out is not there
-        present++;
-      }
-    });
+    myRecords.forEach(tally);
   } else {
     // Week mode: last 7 days, but only count records that fall in the last 7 days
     const today = new Date();
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(today.getDate() - 6);
-    
+
     myRecords.forEach(r => {
       const recordDate = new Date(r.date);
-      if (recordDate >= sevenDaysAgo && recordDate <= today) {
-        if (r.status === "Absent" || !r.checkIn || r.checkIn === "--:--" || r.checkIn === "12:00 AM") {
-          absent++;
-        } else {
-          let isLate = false;
-          const parsed = parseAMPMTime(r.checkIn);
-          if (parsed && (parsed.h > 11 || (parsed.h === 11 && parsed.m > 0))) {
-            isLate = true;
-          }
-          if (isLate) late++;
-          else present++;
-        }
-      }
+      if (recordDate >= sevenDaysAgo && recordDate <= today) tally(r);
     });
   }
 
@@ -807,27 +782,30 @@ function renderTodayCheckinStatus() {
   if (!el) return;
 
   const todayStr = iso(new Date());
-  const source = (state.monthlyAttendance && state.monthlyAttendance.length > 0)
-    ? state.monthlyAttendance
-    : state.attendance;
+  const res = resolveAttendance(CURRENT_USER_ID, todayStr);
+  const todayRecord = res.record;
 
-  const todayRecord = source.find(
-    a => a.employeeId === CURRENT_USER_ID && a.date === todayStr
-  );
+  console.log('[DEBUG] renderTodayCheckinStatus:', { todayStr, CURRENT_USER_ID, found: !!todayRecord, status: res.status });
 
-  console.log('[DEBUG] renderTodayCheckinStatus:', { todayStr, CURRENT_USER_ID, found: !!todayRecord, punches: todayRecord?.punches, sourceLen: source.length });
+  if (res.status === "Work From Home") {
+    el.innerHTML = `
+      <div style="font-size:1rem;font-weight:600;color:#6366f1;margin-bottom:0.75rem">Working From Home Today 🏠</div>
+      <p class="sub" style="margin-top:0.5rem;font-size:0.8125rem;line-height:1.5;color:var(--muted-foreground)">
+        You have an approved Work From Home request for today.
+      </p>`;
+    return;
+  }
 
-  const hasCheckedIn = todayRecord &&
-    todayRecord.checkIn &&
-    todayRecord.checkIn !== "--:--" &&
-    todayRecord.checkIn !== "12:00 AM" &&
-    todayRecord.status !== "Absent";
+  const hasCheckedIn = res.checkIn &&
+    res.checkIn !== "--:--" &&
+    res.checkIn !== "12:00 AM" &&
+    res.status !== "Absent";
 
   if (hasCheckedIn) {
     let sessionsHTML = "";
-    if (todayRecord.punches && todayRecord.punches.length > 0) {
-      sessionsHTML = todayRecord.punches.map((p, i) => `
-        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:${i < todayRecord.punches.length - 1 ? '1px solid #f3f4f6' : 'none'}">
+    if (res.punches && res.punches.length > 0) {
+      sessionsHTML = res.punches.map((p, i) => `
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:${i < res.punches.length - 1 ? '1px solid #f3f4f6' : 'none'}">
           <span style="font-weight:500;min-width:4.5rem;font-size:0.8125rem;color:#374151">Session ${i + 1}:</span>
           <span style="color:var(--muted-foreground);font-size:0.8125rem">${formatPunchTime(p.in)} → ${formatPunchTime(p.out)}</span>
         </div>
@@ -839,12 +817,12 @@ function renderTodayCheckinStatus() {
       <div class="punch-details" style="background:#f9fafb;border-radius:0.5rem;padding:0.75rem">
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #e5e7eb">
           <span style="font-weight:600;font-size:0.8125rem;color:#374151">Check-in:</span>
-          <span style="font-size:0.875rem;color:#059669;font-weight:700">${todayRecord.checkIn}</span>
+          <span style="font-size:0.875rem;color:#059669;font-weight:700">${res.checkIn}</span>
         </div>
         ${sessionsHTML}
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-top:1px solid #e5e7eb">
           <span style="font-weight:600;font-size:0.8125rem;color:#374151">Check-out:</span>
-          <span style="font-size:0.875rem;color:#dc2626;font-weight:700">${todayRecord.checkOut}</span>
+          <span style="font-size:0.875rem;color:#dc2626;font-weight:700">${res.checkOut}</span>
         </div>
       </div>
     `;
@@ -1034,9 +1012,12 @@ function openEmployeeModal(empId) {
 function renderAttendanceAdmin() {
   const todayStr = iso(new Date());
   const todayAll = state.attendance.filter(a => a.date === todayStr);
-  const present = todayAll.filter(a => a.status && a.status !== "Absent").length;
-  const onTime = todayAll.filter(a => a.status === "Present").length;
-  const late = todayAll.filter(a => a.status === "Late").length;
+  const present = todayAll.filter(a => {
+    const st = resolveAttendance(a.employeeId, todayStr).status;
+    return st !== "Absent";
+  }).length;
+  const onTime = todayAll.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Present").length;
+  const late = todayAll.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Late").length;
   const withData = new Set(state.attendance.map(a => a.employeeId)).size;
   const totalStaff = withData || employees.length;
 
@@ -1049,6 +1030,7 @@ function renderAttendanceAdmin() {
   if (todayAll.length) {
     tbody.innerHTML = todayAll.map(a => {
       const emp = getEmployee(a.employeeId);
+      const res = resolveAttendance(a.employeeId, todayStr);
       let sessionsHTML = "";
       if (a.punches && a.punches.length > 0) {
         sessionsHTML = a.punches.map((p, i) =>
@@ -1069,7 +1051,7 @@ function renderAttendanceAdmin() {
         <td><span style="font-weight:500">${a.checkIn ?? "—"}</span></td>
         <td>${sessionsHTML}</td>
         <td><span style="font-weight:500">${a.checkOut ?? "—"}</span></td>
-        <td>${badgeHTML(a.status)}</td>
+        <td>${badgeHTML(res.status)}</td>
       </tr>`;
     }).join("");
   } else {
@@ -1127,17 +1109,21 @@ function renderAttendanceEmployee() {
     const dayName = days[i];
     const dateNum = d.getDate();
 
-    let record = state.last6Months.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    if (!record) {
-      record = state.attendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    }
-    if (!record && state.monthlyAttendance) {
-      record = state.monthlyAttendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    }
+    const res = resolveAttendance(CURRENT_USER_ID, dateStr);
+    const record = res.record;
 
     let status = "gray", statusLabel = "No data", endDotClass = "gray", checkInStr = "", checkOutStr = "";
 
-    if (record) {
+    if (res.status === "Work From Home") {
+      status = "wfh";
+      statusLabel = "Work From Home";
+      const ci = res.checkIn, co = res.checkOut;
+      const hasCI = ci && ci !== "--:--" && ci !== "12:00 AM" && ci !== "Invalid Date";
+      const hasCO = co && co !== "--:--" && co !== "12:00 AM" && co !== "Invalid Date";
+      checkInStr = hasCI ? ci : "—";
+      checkOutStr = hasCO ? co : "—";
+      endDotClass = "wfh";
+    } else if (record) {
       const ci = record.checkIn;
       const co = record.checkOut;
       const hasCI = ci && ci !== "--:--" && ci !== "12:00 AM" && ci !== "Invalid Date";
@@ -1318,7 +1304,7 @@ function renderAttendanceCalendar() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0, wfhCount = 0;
 
   let calHTML = `
     <div class="att-cal-day-header">Sun</div>
@@ -1342,11 +1328,18 @@ function renderAttendanceCalendar() {
 
     let statusClass = "", statusText = "", checkInStr = "", checkOutStr = "";
 
-    let record = state.last6Months.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    if (!record) record = state.attendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    if (!record && state.monthlyAttendance) record = state.monthlyAttendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
+    const res = resolveAttendance(CURRENT_USER_ID, dateStr);
+    const record = res.record;
 
-    if (record) {
+    if (res.status === "Work From Home") {
+      statusClass = "wfh";
+      statusText = "Work From Home";
+      const hasCI = res.checkIn && res.checkIn !== "--:--" && res.checkIn !== "12:00 AM" && res.checkIn !== "Invalid Date";
+      const hasCO = res.checkOut && res.checkOut !== "--:--" && res.checkOut !== "12:00 AM" && res.checkOut !== "Invalid Date";
+      checkInStr = hasCI ? res.checkIn : "";
+      checkOutStr = hasCO ? res.checkOut : "";
+      wfhCount++;
+    } else if (record) {
       const hasCI = record.checkIn && record.checkIn !== "--:--" && record.checkIn !== "12:00 AM" && record.checkIn !== "Invalid Date";
       const hasCO = record.checkOut && record.checkOut !== "--:--" && record.checkOut !== "12:00 AM" && record.checkOut !== "Invalid Date";
       if (hasCI || hasCO) {
@@ -1388,11 +1381,12 @@ function renderAttendanceCalendar() {
   // Monthly summary
   const summaryEl = document.getElementById("att-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount + wfhCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount + wfhCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
+      <span class="att-cal-stat"><span class="dot" style="background:#6366f1"></span>WFH <b>${wfhCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>
     `;
@@ -1511,6 +1505,133 @@ async function submitLeave() {
     renderLeaveEmployee();
   } catch (err) {
     showToast("Failed to submit leave request");
+  }
+}
+
+/* ---------- Work From Home (Supabase) ---------- */
+function wfhDaysBetween(from, to) {
+  const f = new Date(from), t = new Date(to);
+  return Math.max(1, Math.ceil((t - f) / 86400000) + 1);
+}
+
+async function loadWfhRequests() {
+  const data = await API.fetchWfhRequests(
+    state.role === "admin" ? null : window.CURRENT_USER_ID
+  );
+  state.wfhRequests = data.map(r => ({
+    id: r.id,
+    employeeId: r.employee_id,
+    from: r.from_date,
+    to: r.to_date,
+    days: wfhDaysBetween(r.from_date, r.to_date),
+    reason: r.reason || "",
+    status: r.status,
+    reviewerNote: r.reviewer_note || "",
+    reviewedBy: r.reviewed_by || "",
+    appliedOn: r.applied_on
+  }));
+}
+
+function renderWfhEmployee() {
+  const my = state.wfhRequests.filter(w => w.employeeId === CURRENT_USER_ID);
+  const pending = my.filter(w => w.status === "Pending").length;
+  const approved = my.filter(w => w.status === "Approved").length;
+  const rejected = my.filter(w => w.status === "Rejected").length;
+
+  const statsEl = document.getElementById("wfh-emp-stats");
+  if (statsEl) statsEl.innerHTML =
+    statCardHTML("Pending", pending, null, "chart3") +
+    statCardHTML("Approved", approved, null, "chart5") +
+    statCardHTML("Rejected", rejected, null, "primary");
+
+  const listEl = document.getElementById("wfh-emp-requests");
+  if (listEl) {
+    listEl.innerHTML = my.map(w => `
+      <div class="list-row">
+        <div class="list-row-info">
+          <div class="title">Work From Home</div>
+          <div class="sub">${formatDate(w.from)} – ${formatDate(w.to)} · ${w.days}d</div>
+        </div>
+        <div class="leave-request-status">
+          ${badgeHTML(w.status)}
+          ${w.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(w.reviewerNote)}</span>` : ""}
+        </div>
+      </div>`).join("");
+  }
+}
+
+function renderWfhAdmin() {
+  const pending = state.wfhRequests.filter(w => w.status === "Pending");
+  const approved = state.wfhRequests.filter(w => w.status === "Approved").length;
+  const rejected = state.wfhRequests.filter(w => w.status === "Rejected").length;
+
+  const statsEl = document.getElementById("wfh-admin-stats");
+  if (statsEl) statsEl.innerHTML =
+    statCardHTML("Pending Requests", pending.length, null, "chart3") +
+    statCardHTML("Approved", approved, null, "chart5") +
+    statCardHTML("Rejected", rejected, null, "primary");
+
+  const listEl = document.getElementById("wfh-admin-pending");
+  if (listEl) {
+    listEl.innerHTML = pending.map(w => {
+      const emp = getEmployee(w.employeeId);
+      return `<div class="list-row">
+        ${avatarHTML(emp.name)}
+        <div class="list-row-info">
+          <div class="title">${escapeHtml(emp.name)} — Work From Home</div>
+          <div class="sub">${formatDate(w.from)} to ${formatDate(w.to)} · ${w.days} days · ${escapeHtml(w.reason)}</div>
+        </div>
+        <button class="btn primary sm" onclick="setWfhStatus('${w.id}','Approved')">Approve</button>
+        <button class="btn outline sm" onclick="setWfhStatus('${w.id}','Rejected')">Reject</button>
+      </div>`;
+    }).join("");
+  }
+}
+
+async function setWfhStatus(id, status) {
+  let reviewerNote = "";
+  if (status === "Rejected") {
+    reviewerNote = prompt("Reason for rejection:");
+    if (reviewerNote === null) return;
+  }
+  try {
+    const hrName = document.getElementById('user-name')?.textContent || 'HR';
+    await API.updateWfhStatus(parseInt(id), status, reviewerNote, hrName);
+    showToast(`WFH ${status.toLowerCase()}`);
+    await loadWfhRequests();
+    renderWfhAdmin();
+    // Reflect the override in any visible attendance view
+    if (state.page === "attendance") renderAttendanceAdmin();
+  } catch (err) {
+    showToast("Failed to update WFH status");
+  }
+}
+
+function wfhFormError(msg) {
+  const errEl = document.getElementById("wfh-form-error");
+  if (!errEl) return;
+  errEl.textContent = msg;
+  errEl.style.display = "block";
+}
+
+async function submitWfh() {
+  const from = document.getElementById("wfh-from").value;
+  const to = document.getElementById("wfh-to").value;
+  const reason = document.getElementById("wfh-reason").value;
+  if (!from || !to) { wfhFormError("Please select both From and To dates."); return; }
+  if (new Date(to) < new Date(from)) { wfhFormError("To date cannot be earlier than the From date."); return; }
+  try {
+    await API.createWfhRequest(CURRENT_USER_ID, from, to, reason);
+    document.getElementById("wfh-from").value = "";
+    document.getElementById("wfh-to").value = "";
+    document.getElementById("wfh-reason").value = "";
+    const errEl = document.getElementById("wfh-form-error");
+    if (errEl) errEl.style.display = "none";
+    showToast("WFH request submitted!");
+    await loadWfhRequests();
+    renderWfhEmployee();
+  } catch (err) {
+    showToast("Failed to submit WFH request");
   }
 }
 
@@ -2826,6 +2947,51 @@ function getAttendanceRecordForDate(empid, dateStr) {
   return r || null;
 }
 
+/* ---------- Shared Attendance Resolution Service ----------
+   Single source of truth for an employee's attendance status on a
+   given date. Used by EVERY attendance view in the app so behaviour
+   stays consistent.
+
+   It consults the scraped attendance (monthly -> last6 -> attendance,
+   via getAttendanceRecordForDate) and applies the approved
+   Work-From-Home override. An approved WFH request for the date
+   always wins, even when the scraped record says "Absent".
+
+   Returns a normalized object:
+     { record, status, checkIn, checkOut, overtime, punches, wfh }
+   where `status` is one of: "Present", "Late", "Absent",
+   "Work From Home". */
+function getWfhRequestForDate(empid, dateStr) {
+  if (!state.wfhRequests || !state.wfhRequests.length) return null;
+  const target = new Date(dateStr);
+  return state.wfhRequests.find(w => {
+    if (w.employeeId !== empid || w.status !== "Approved") return false;
+    const from = new Date(w.from);
+    const to = new Date(w.to);
+    return target >= from && target <= to;
+  }) || null;
+}
+
+function resolveAttendance(empid, dateStr) {
+  const record = getAttendanceRecordForDate(empid, dateStr);
+  let status = "Absent";
+  let checkIn = null, checkOut = null, overtime = 0, punches = [];
+
+  if (record) {
+    checkIn = record.checkIn || null;
+    checkOut = record.checkOut || null;
+    overtime = record.overtime;
+    punches = Array.isArray(record.punches) ? record.punches : [];
+    const hasCI = isValidCheckIn(checkIn);
+    status = !hasCI ? "Absent" : (record.status === "Late" ? "Late" : "Present");
+  }
+
+  const wfh = getWfhRequestForDate(empid, dateStr);
+  if (wfh) status = "Work From Home";
+
+  return { record, status, checkIn, checkOut, overtime, punches, wfh };
+}
+
 /* Build a day-by-day record set for an employee & month (within eligible range) */
 function computeMonthDayRecords(empid, year, month) {
   const now = new Date();
@@ -2837,18 +3003,21 @@ function computeMonthDayRecords(empid, year, month) {
   for (let day = 1; day <= eligible; day++) {
     const d = new Date(year, month, day);
     const dateStr = iso(d);
-    const r = getAttendanceRecordForDate(empid, dateStr);
-    const ci = r ? r.checkIn : null;
-    const co = r ? r.checkOut : null;
+    const res = resolveAttendance(empid, dateStr);
+    const r = res.record;
+    const ci = res.checkIn;
+    const co = res.checkOut;
     const hasCI = isValidCheckIn(ci);
     const hasCO = isValidCheckIn(co);
 
-    let status = "absent";
+    let status = res.status === "Work From Home" ? "wfh"
+      : res.status === "Late" ? "late"
+      : res.status === "Present" ? "present"
+      : "absent";
     let hours = 0;
-    const punches = (r && Array.isArray(r.punches)) ? r.punches : [];
+    const punches = res.punches;
 
-    if (hasCI) {
-      status = (r.status === "Late") ? "late" : "present";
+    if (hasCI && status !== "wfh") {
       if (r.overtime && Number(r.overtime) > 0) {
         hours = Number(r.overtime);
       } else if (hasCO) {
@@ -2898,18 +3067,21 @@ function computeMonthStats(empid, year, month) {
 function buildDayRecordsForDates(empid, dates) {
   return dates.map(d => {
     const dateStr = iso(d);
-    const r = getAttendanceRecordForDate(empid, dateStr);
-    const ci = r ? r.checkIn : null;
-    const co = r ? r.checkOut : null;
+    const res = resolveAttendance(empid, dateStr);
+    const r = res.record;
+    const ci = res.checkIn;
+    const co = res.checkOut;
     const hasCI = isValidCheckIn(ci);
     const hasCO = isValidCheckIn(co);
 
-    let status = "absent";
+    let status = res.status === "Work From Home" ? "wfh"
+      : res.status === "Late" ? "late"
+      : res.status === "Present" ? "present"
+      : "absent";
     let hours = 0;
-    const punches = (r && Array.isArray(r.punches)) ? r.punches : [];
+    const punches = res.punches;
 
-    if (hasCI) {
-      status = (r.status === "Late") ? "late" : "present";
+    if (hasCI && status !== "wfh") {
       if (r.overtime && Number(r.overtime) > 0) {
         hours = Number(r.overtime);
       } else if (hasCO) {
@@ -2940,14 +3112,18 @@ function dayRecordsTableHTML(recs) {
 
     const statusBadge = r.status === "absent"
       ? '<span class="badge absent">Absent</span>'
-      : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
+      : r.status === "late"
+      ? '<span class="badge warning">Late</span>'
+      : r.status === "wfh"
+      ? '<span class="badge work-from-home">Work From Home</span>'
+      : '<span class="badge success">Present</span>';
 
     return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
       <td>${punchHTML}</td>
-      <td>${r.status === "absent" ? "—" : r.hours + "h"}</td>
+      <td>${r.status === "absent" || r.status === "wfh" ? "—" : r.hours + "h"}</td>
     </tr>`;
   }).join("");
 }
@@ -3175,7 +3351,7 @@ function renderAnalyticsCalendar(empid, year, month) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0, wfhCount = 0;
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   let calHTML = dayNames.map(d => `<div class="att-cal-day-header">${d}</div>`).join("");
@@ -3190,20 +3366,31 @@ function renderAnalyticsCalendar(empid, year, month) {
 
     let statusClass = "", statusText = "", checkInStr = "", checkOutStr = "";
 
-    const r = getAttendanceRecordForDate(empid, dateStr);
-    const hasCI = r && isValidCheckIn(r.checkIn);
-    const hasCO = r && isValidCheckIn(r.checkOut);
+    const res = resolveAttendance(empid, dateStr);
+    const r = res.record;
 
-    if (hasCI || hasCO) {
-      checkInStr = hasCI ? r.checkIn : "—";
-      checkOutStr = hasCO ? r.checkOut : "—";
-      statusClass = (r.status === "Late") ? "cal-late" : "cal-present";
-      statusText = (r.status === "Late") ? "Late" : "Present";
-      if (statusClass === "cal-late") lateCount++; else presentCount++;
-    } else if (r) {
-      statusClass = "cal-absent";
-      statusText = "Absent";
-      absentCount++;
+    if (res.status === "Work From Home") {
+      statusClass = "cal-wfh";
+      statusText = "Work From Home";
+      const hasCI = res.checkIn && isValidCheckIn(res.checkIn);
+      const hasCO = res.checkOut && isValidCheckIn(res.checkOut);
+      checkInStr = hasCI ? res.checkIn : "";
+      checkOutStr = hasCO ? res.checkOut : "";
+      wfhCount++;
+    } else {
+      const hasCI = r && isValidCheckIn(r.checkIn);
+      const hasCO = r && isValidCheckIn(r.checkOut);
+      if (hasCI || hasCO) {
+        checkInStr = hasCI ? r.checkIn : "—";
+        checkOutStr = hasCO ? r.checkOut : "—";
+        statusClass = (r.status === "Late") ? "cal-late" : "cal-present";
+        statusText = (r.status === "Late") ? "Late" : "Present";
+        if (statusClass === "cal-late") lateCount++; else presentCount++;
+      } else if (r) {
+        statusClass = "cal-absent";
+        statusText = "Absent";
+        absentCount++;
+      }
     }
 
     const cellClass = ["att-cal-cell", statusClass, isWeekend ? "weekend" : "", isToday ? "today" : ""]
@@ -3228,11 +3415,12 @@ function renderAnalyticsCalendar(empid, year, month) {
 
   const summaryEl = document.getElementById("analytics-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount + wfhCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount + wfhCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
+      <span class="att-cal-stat"><span class="dot" style="background:#6366f1"></span>WFH <b>${wfhCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>`;
   }
@@ -3255,14 +3443,18 @@ function renderAnalyticsTable(stats) {
 
     const statusBadge = r.status === "absent"
       ? '<span class="badge absent">Absent</span>'
-      : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
+      : r.status === "late"
+      ? '<span class="badge warning">Late</span>'
+      : r.status === "wfh"
+      ? '<span class="badge work-from-home">Work From Home</span>'
+      : '<span class="badge success">Present</span>';
 
     return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
       <td>${punchHTML}</td>
-      <td>${r.status === "absent" ? "—" : r.hours + "h"}</td>
+      <td>${r.status === "absent" || r.status === "wfh" ? "—" : r.hours + "h"}</td>
     </tr>`;
   }).join("");
 }
