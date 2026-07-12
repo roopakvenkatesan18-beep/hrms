@@ -2,15 +2,30 @@
 -- CADD Tech HRMS — Travel Allowance Schema (Migration)
 -- Run this ONCE in the Supabase SQL Editor.
 --
--- Covers Task 5 changes:
+-- Covers:
 --   1. Rename onboarding_requests -> travel_allowance_requests
 --   2. Add travel_distance_km column
 --   3. Create perf_targets (HR-set performance targets)
 --   4. Create employee_details (with branch, dept, location, etc.)
+--   5. Fix RLS empid resolution (prevents "new row violates RLS")
 --
 -- NOTE: app_meta (used for the reimbursement rate + monthly perf
 -- reset) is created by setup/performance_reset.sql. Keep that table.
 -- ============================================================
+
+-- ---------- 0. Helper: resolve current user's empid ----------
+-- SECURITY DEFINER so it is NOT blocked by profiles RLS. Must be
+-- created BEFORE any policy that references it.
+CREATE OR REPLACE FUNCTION public.app_current_empid()
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT empid FROM public.profiles WHERE id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.app_current_empid() TO authenticated, anon;
 
 -- ---------- 1. Travel Allowance Requests ----------
 -- Rename the old onboarding table if it still exists (preserves data)
@@ -58,7 +73,7 @@ DROP POLICY IF EXISTS "HR update onboarding" ON public.travel_allowance_requests
 
 CREATE POLICY "Employees view own travel allowance"
   ON public.travel_allowance_requests FOR SELECT
-  USING ( employee_id = (SELECT empid FROM public.profiles WHERE id = auth.uid()) );
+  USING ( employee_id = public.app_current_empid() );
 
 CREATE POLICY "HR view all travel allowance"
   ON public.travel_allowance_requests FOR SELECT
@@ -66,17 +81,11 @@ CREATE POLICY "HR view all travel allowance"
 
 CREATE POLICY "Employees insert own travel allowance"
   ON public.travel_allowance_requests FOR INSERT
-  WITH CHECK (
-    employee_id = (SELECT empid FROM public.profiles WHERE id = auth.uid())
-    AND status = 'Pending'
-  );
+  WITH CHECK ( employee_id = public.app_current_empid() AND status = 'Pending' );
 
 CREATE POLICY "Employees update own pending travel allowance"
   ON public.travel_allowance_requests FOR UPDATE
-  USING (
-    employee_id = (SELECT empid FROM public.profiles WHERE id = auth.uid())
-    AND status = 'Pending'
-  );
+  USING ( employee_id = public.app_current_empid() AND status = 'Pending' );
 
 CREATE POLICY "HR update travel allowance"
   ON public.travel_allowance_requests FOR UPDATE
@@ -107,7 +116,7 @@ ALTER TABLE public.employee_details ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Employees view own details" ON public.employee_details;
 CREATE POLICY "Employees view own details"
   ON public.employee_details FOR SELECT
-  USING ( empid = (SELECT empid FROM public.profiles WHERE id = auth.uid()) );
+  USING ( empid = public.app_current_empid() );
 
 DROP POLICY IF EXISTS "HR view all details" ON public.employee_details;
 CREATE POLICY "HR view all details"
@@ -117,12 +126,12 @@ CREATE POLICY "HR view all details"
 DROP POLICY IF EXISTS "Employees upsert own details" ON public.employee_details;
 CREATE POLICY "Employees upsert own details"
   ON public.employee_details FOR INSERT
-  WITH CHECK ( empid = (SELECT empid FROM public.profiles WHERE id = auth.uid()) );
+  WITH CHECK ( empid = public.app_current_empid() );
 
 DROP POLICY IF EXISTS "Employees update own details" ON public.employee_details;
 CREATE POLICY "Employees update own details"
   ON public.employee_details FOR UPDATE
-  USING ( empid = (SELECT empid FROM public.profiles WHERE id = auth.uid()) );
+  USING ( empid = public.app_current_empid() );
 
 DROP POLICY IF EXISTS "HR upsert details" ON public.employee_details;
 CREATE POLICY "HR upsert details"
@@ -133,36 +142,3 @@ DROP POLICY IF EXISTS "HR update details" ON public.employee_details;
 CREATE POLICY "HR update details"
   ON public.employee_details FOR UPDATE
   USING ( public.is_hr() );
-
--- ---------- 4. Fix RLS empid resolution (prevents "new row violates RLS") ----------
--- The WITH CHECK policies below compare employee_id to
---   (SELECT empid FROM public.profiles WHERE id = auth.uid())
--- If profiles RLS blocks that lookup (or profiles.id != auth.uid()), it
--- returns NULL and every employee insert/update is rejected.
--- This SECURITY DEFINER helper resolves the empid WITHOUT being blocked
--- by profiles RLS, so the policies evaluate correctly.
-CREATE OR REPLACE FUNCTION public.app_current_empid()
-RETURNS text
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT empid FROM public.profiles WHERE id = auth.uid();
-$$;
-
-GRANT EXECUTE ON FUNCTION public.app_current_empid() TO authenticated, anon;
-
-DROP POLICY IF EXISTS "Employees insert own travel allowance" ON public.travel_allowance_requests;
-CREATE POLICY "Employees insert own travel allowance"
-  ON public.travel_allowance_requests FOR INSERT
-  WITH CHECK ( employee_id = public.app_current_empid() AND status = 'Pending' );
-
-DROP POLICY IF EXISTS "Employees update own pending travel allowance" ON public.travel_allowance_requests;
-CREATE POLICY "Employees update own pending travel allowance"
-  ON public.travel_allowance_requests FOR UPDATE
-  USING ( employee_id = public.app_current_empid() AND status = 'Pending' );
-
-DROP POLICY IF EXISTS "Employees view own travel allowance" ON public.travel_allowance_requests;
-CREATE POLICY "Employees view own travel allowance"
-  ON public.travel_allowance_requests FOR SELECT
-  USING ( employee_id = public.app_current_empid() );
