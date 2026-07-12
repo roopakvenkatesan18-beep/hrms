@@ -392,7 +392,7 @@ a { color: inherit; text-decoration: none; }
 .badge.on-leave, .badge.half-day {
   background: rgb(37 99 235 / 12%); color: var(--accent);
 }
-.badge.work-from-home {
+.badge.present-wfh {
   background: rgb(99 102 241 / 15%); color: #4338ca;
 }
 
