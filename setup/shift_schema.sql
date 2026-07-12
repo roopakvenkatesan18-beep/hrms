@@ -59,8 +59,8 @@ AS $$
 BEGIN
   UPDATE public.profiles
   SET department = COALESCE(p_department, department),
-      shift_checkin = COALESCE(p_shift_checkin, shift_checkin),
-      shift_checkout = COALESCE(p_shift_checkout, shift_checkout)
+      shift_checkin = COALESCE(p_shift_checkin::time, shift_checkin),
+      shift_checkout = COALESCE(p_shift_checkout::time, shift_checkout)
   WHERE empid = p_empid;
 END;
 $$;
