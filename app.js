@@ -1523,6 +1523,8 @@ async function loadWfhRequests() {
     employeeId: r.employee_id,
     from: r.from_date,
     to: r.to_date,
+    fromTime: r.from_time || "",
+    toTime: r.to_time || "",
     days: wfhDaysBetween(r.from_date, r.to_date),
     reason: r.reason || "",
     status: r.status,
@@ -1546,17 +1548,19 @@ function renderWfhEmployee() {
 
   const listEl = document.getElementById("wfh-emp-requests");
   if (listEl) {
-    listEl.innerHTML = my.map(w => `
-      <div class="list-row">
+    listEl.innerHTML = my.map(w => {
+      const timeStr = (w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : "";
+      return `<div class="list-row">
         <div class="list-row-info">
           <div class="title">Work From Home</div>
-          <div class="sub">${formatDate(w.from)} – ${formatDate(w.to)} · ${w.days}d</div>
+          <div class="sub">${formatDate(w.from)} – ${formatDate(w.to)} · ${w.days}d${timeStr}</div>
         </div>
         <div class="leave-request-status">
           ${badgeHTML(w.status)}
           ${w.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(w.reviewerNote)}</span>` : ""}
         </div>
-      </div>`).join("");
+      </div>`;
+    }).join("");
   }
 }
 
@@ -1575,11 +1579,12 @@ function renderWfhAdmin() {
   if (listEl) {
     listEl.innerHTML = pending.map(w => {
       const emp = getEmployee(w.employeeId);
+      const timeStr = (w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : "";
       return `<div class="list-row">
         ${avatarHTML(emp.name)}
         <div class="list-row-info">
           <div class="title">${escapeHtml(emp.name)} — Work From Home</div>
-          <div class="sub">${formatDate(w.from)} to ${formatDate(w.to)} · ${w.days} days · ${escapeHtml(w.reason)}</div>
+          <div class="sub">${formatDate(w.from)} to ${formatDate(w.to)} · ${w.days} days · ${escapeHtml(w.reason)}${timeStr}</div>
         </div>
         <button class="btn primary sm" onclick="setWfhStatus('${w.id}','Approved')">Approve</button>
         <button class="btn outline sm" onclick="setWfhStatus('${w.id}','Rejected')">Reject</button>
@@ -1617,13 +1622,17 @@ function wfhFormError(msg) {
 async function submitWfh() {
   const from = document.getElementById("wfh-from").value;
   const to = document.getElementById("wfh-to").value;
+  const fromTime = document.getElementById("wfh-from-time").value;
+  const toTime = document.getElementById("wfh-to-time").value;
   const reason = document.getElementById("wfh-reason").value;
   if (!from || !to) { wfhFormError("Please select both From and To dates."); return; }
   if (new Date(to) < new Date(from)) { wfhFormError("To date cannot be earlier than the From date."); return; }
   try {
-    await API.createWfhRequest(CURRENT_USER_ID, from, to, reason);
+    await API.createWfhRequest(CURRENT_USER_ID, from, to, fromTime, toTime, reason);
     document.getElementById("wfh-from").value = "";
     document.getElementById("wfh-to").value = "";
+    document.getElementById("wfh-from-time").value = "";
+    document.getElementById("wfh-to-time").value = "";
     document.getElementById("wfh-reason").value = "";
     const errEl = document.getElementById("wfh-form-error");
     if (errEl) errEl.style.display = "none";
@@ -2987,7 +2996,12 @@ function resolveAttendance(empid, dateStr) {
   }
 
   const wfh = getWfhRequestForDate(empid, dateStr);
-  if (wfh) status = "Work From Home";
+  if (wfh) {
+    status = "Work From Home";
+    // Use the employee-provided WFH check-in / check-out times when present
+    if (wfh.fromTime) checkIn = wfh.fromTime;
+    if (wfh.toTime) checkOut = wfh.toTime;
+  }
 
   return { record, status, checkIn, checkOut, overtime, punches, wfh };
 }
