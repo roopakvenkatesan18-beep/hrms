@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS public.wfh_requests (
   employee_id text not null,
   from_date date not null,
   to_date date not null,
+  from_time time,
+  to_time time,
   reason text default '',
   status text not null default 'Pending'
     check (status in ('Pending', 'Approved', 'Rejected')),
@@ -25,6 +27,10 @@ CREATE TABLE IF NOT EXISTS public.wfh_requests (
   applied_on date not null default CURRENT_DATE,
   created_at timestamptz default now()
 );
+
+-- Idempotent: add the time columns if the table already exists without them
+ALTER TABLE public.wfh_requests ADD COLUMN IF NOT EXISTS from_time time;
+ALTER TABLE public.wfh_requests ADD COLUMN IF NOT EXISTS to_time time;
 
 ALTER TABLE public.wfh_requests ENABLE ROW LEVEL SECURITY;
 
