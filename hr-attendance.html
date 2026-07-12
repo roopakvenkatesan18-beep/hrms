@@ -266,6 +266,9 @@
       // as "Present WFH" across Statistics, Calendar and Table (any month)
       await loadWfhRequests();
 
+      // Load approved leave requests so Sunday leaves resolve as "Leave"
+      await loadLeaveRequests();
+
       // Sidebar / menu wiring (lightweight)
       document.getElementById('menu-btn')?.addEventListener('click', () => {
         document.getElementById('sidebar')?.classList.add('open');
