@@ -676,6 +676,9 @@
       // Sync real employee data from Supabase DB to local employees list
       await syncEmployeesFromSupabase();
 
+      // Recompute late status using each employee's assigned shift
+      applyShiftLate();
+
       // Load this employee's schedule from Supabase
       await loadScheduleSlots();
 
