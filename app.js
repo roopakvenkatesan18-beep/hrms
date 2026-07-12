@@ -20,6 +20,7 @@ const state = {
   scheduleSlots: [],
   activeConversationId: "",
   pieMode: "Month",
+  chartType: "Bar",
   pieChart: null,
   hoursChart: null,
 
@@ -751,8 +752,10 @@ function renderHoursChart() {
 
   if (state.hoursChart) { state.hoursChart.destroy(); state.hoursChart = null; }
 
+  const isBar = state.chartType !== "Line";
+
   const config = {
-    type: "bar",
+    type: isBar ? "bar" : "line",
     data: {
       labels: hd.map(d => d.date),
       datasets: [{
@@ -760,8 +763,8 @@ function renderHoursChart() {
         data: hd.map(d => d.hours),
         backgroundColor: "#3b82f6",
         borderColor: "#3b82f6",
-        borderWidth: 0,
-        fill: false,
+        borderWidth: isBar ? 0 : 2,
+        fill: isBar ? false : true,
         pointBackgroundColor: "#fff",
         pointBorderColor: "#3b82f6",
         pointBorderWidth: 2,
@@ -772,7 +775,7 @@ function renderHoursChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      indexAxis: "x",
+      indexAxis: isBar ? "y" : "x",
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -3255,6 +3258,10 @@ function updateChartToggleStyles(prefix, activeValue) {
   if (prefix === "pie-mode") {
     applyToggleStyle("pie-mode-week", activeValue === "Week" ? activeStyle : inactiveStyle);
     applyToggleStyle("pie-mode-month", activeValue === "Month" ? activeStyle : inactiveStyle);
+  }
+  if (prefix === "hours-mode") {
+    applyToggleStyle("hours-mode-bar", activeValue === "Bar" ? activeStyle : inactiveStyle);
+    applyToggleStyle("hours-mode-line", activeValue === "Line" ? activeStyle : inactiveStyle);
   }
 }
 
