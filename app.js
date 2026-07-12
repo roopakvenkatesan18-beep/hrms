@@ -114,6 +114,45 @@ function timeStrToHours(t) {
   return p ? p.h + p.m / 60 : 0;
 }
 
+/* Parse a 24h time string ("09:00:00" or "09:00") to {h, m} */
+function parse24hTime(t) {
+  if (!t) return null;
+  const parts = String(t).split(":");
+  if (parts.length < 2) return null;
+  return { h: parseInt(parts[0], 10), m: parseInt(parts[1], 10) };
+}
+
+/* Minutes between a displayed check-in ("09:42 AM") and a 24h shift time */
+function minutesLateVsShift(checkInDisplay, shiftCheckin24h) {
+  const ci = parseAMPMTime(checkInDisplay);
+  const shift = parse24hTime(shiftCheckin24h);
+  if (!ci || !shift) return null;
+  return (ci.h * 60 + ci.m) - (shift.h * 60 + shift.m);
+}
+
+/* Recompute Present/Late using the employee's assigned shift.
+   Absent records are left untouched. Records with no shift keep their
+   prior status (legacy fixed 11:00 rule). */
+function recomputeStatusWithShift(records) {
+  if (!records || !Array.isArray(records)) return;
+  records.forEach(r => {
+    if (!r || r.status === "Absent") return;
+    const emp = employees.find(e => e.id === r.employeeId);
+    const shiftCI = emp && (emp.shiftCheckin || emp.shift_checkin);
+    if (!shiftCI) return;
+    const diff = minutesLateVsShift(r.checkIn, shiftCI);
+    if (diff === null) return;
+    r.status = diff > 30 ? "Late" : "Present";
+  });
+}
+
+/* Apply shift-based late calculation to all loaded attendance arrays */
+function applyShiftLate() {
+  ["attendance", "monthlyAttendance", "last6Months"].forEach(key => {
+    if (state[key] && Array.isArray(state[key])) recomputeStatusWithShift(state[key]);
+  });
+}
+
 /* ---------- Toast ---------- */
 let toastTimeout = null;
 function showToast(msg) {
@@ -222,6 +261,18 @@ async function renderEmpManagement() {
     });
   }
 
+  // Show/hide shift fields based on role (employees only)
+  const roleSel = document.getElementById('ae-role');
+  const shiftFields = document.getElementById('ae-shift-fields');
+  const syncShiftVisibility = () => {
+    if (roleSel && shiftFields) shiftFields.style.display = roleSel.value === 'employee' ? 'grid' : 'none';
+  };
+  if (roleSel && !roleSel._empMgmtBound) {
+    roleSel._empMgmtBound = true;
+    roleSel.addEventListener('change', syncShiftVisibility);
+  }
+  syncShiftVisibility();
+
   if (addForm && !addForm._empMgmtBound) {
     addForm._empMgmtBound = true;
     addForm.addEventListener('submit', async (e) => {
@@ -231,6 +282,8 @@ async function renderEmpManagement() {
       const role  = document.getElementById('ae-role').value;
       const dept  = document.getElementById('ae-dept').value.trim();
       const pass  = document.getElementById('ae-password').value;
+      const shiftCiEl = document.getElementById('ae-shift-ci');
+      const shiftCoEl = document.getElementById('ae-shift-co');
       const errEl = document.getElementById('ae-error');
       const okEl  = document.getElementById('ae-success');
       const btn   = document.getElementById('ae-submit-btn');
@@ -240,13 +293,23 @@ async function renderEmpManagement() {
       if (!empid || !name || !dept || !pass) { errEl.textContent = 'Please fill all fields.'; return; }
       if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
 
+      // Shift is required for employees; ignored for HR
+      let shiftCheckin = null, shiftCheckout = null;
+      if (role === 'employee') {
+        const ci = shiftCiEl ? shiftCiEl.value : '';
+        const co = shiftCoEl ? shiftCoEl.value : '';
+        if (!ci || !co) { errEl.textContent = 'Please enter shift check-in and check-out times for employees.'; return; }
+        shiftCheckin = `${ci}:00`;
+        shiftCheckout = `${co}:00`;
+      }
+
       btn.disabled = true; btn.textContent = 'Creating…';
       try {
-        await API.addEmployee(empid, name, role, dept, pass);
+        await API.addEmployee(empid, name, role, dept, pass, shiftCheckin, shiftCheckout);
         okEl.textContent = `✓ ${name} (ID: ${empid}) created! They can now log in.`;
         addForm.reset(); emailPreview.textContent = '—';
         // Push into local employees array so directory updates
-        employees.push({ id: empid, name, role, department: dept, email: `${empid}@caddtech.com`, status: 'Active' });
+        employees.push({ id: empid, name, role, department: dept, email: `${empid}@caddtech.com`, status: 'Active', shiftCheckin, shiftCheckout });
         // Refresh the profiles cache for the remove list
         _allProfiles = await API.fetchAllProfiles();
         renderRemoveList(document.getElementById('re-search')?.value || '');
@@ -265,6 +328,16 @@ async function renderEmpManagement() {
   if (reSearch && !reSearch._empMgmtBound) {
     reSearch._empMgmtBound = true;
     reSearch.addEventListener('input', () => renderRemoveList(reSearch.value));
+  }
+
+  // ---- EDIT EMPLOYEE MODAL WIRING ----
+  if (!renderEmpManagement._editBound) {
+    renderEmpManagement._editBound = true;
+    document.getElementById('edit-emp-save')?.addEventListener('click', saveEditEmployee);
+    document.getElementById('edit-emp-cancel')?.addEventListener('click', closeEditEmployee);
+    document.getElementById('edit-emp-modal')?.addEventListener('click', (e) => {
+      if (e.target === document.getElementById('edit-emp-modal')) closeEditEmployee();
+    });
   }
 }
 
@@ -294,10 +367,16 @@ function renderRemoveList(query) {
           <div class="remove-emp-meta">ID: ${escapeHtml(p.empid)} · ${escapeHtml(p.role)} · ${escapeHtml(p.department || '—')}</div>
         </div>
       </div>
-      <button onclick="confirmRemoveEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="remove-emp-btn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        Remove
-      </button>
+      <div class="remove-emp-actions">
+        <button onclick="openEditEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="edit-emp-btn" title="Edit department & shift">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
+        <button onclick="confirmRemoveEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="remove-emp-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Remove
+        </button>
+      </div>
     </div>
   `).join('');
 }
@@ -324,6 +403,68 @@ async function confirmRemoveEmployee(empid, name) {
     msgEl.style.color = '#dc2626';
     msgEl.textContent = err.message || 'Failed to remove employee.';
   }
+}
+
+/* ---------- Edit Employee (department + shift) ---------- */
+let _editEmpId = null;
+
+function openEditEmployee(empid, name) {
+  const p = _allProfiles.find(x => x.empid === empid) || employees.find(x => x.id === empid);
+  if (!p) return;
+  _editEmpId = empid;
+
+  const modal = document.getElementById('edit-emp-modal');
+  const nameEl = document.getElementById('edit-emp-name');
+  const deptEl = document.getElementById('edit-emp-dept');
+  const ciEl = document.getElementById('edit-emp-shift-ci');
+  const coEl = document.getElementById('edit-emp-shift-co');
+  const errEl = document.getElementById('edit-emp-error');
+
+  if (nameEl) nameEl.textContent = `${name} (ID: ${empid})`;
+  if (deptEl) deptEl.value = p.department || '';
+  if (ciEl) ciEl.value = (p.shift_checkin || '').toString().slice(0, 5);
+  if (coEl) coEl.value = (p.shift_checkout || '').toString().slice(0, 5);
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+  if (modal) modal.style.display = 'flex';
+}
+
+async function saveEditEmployee() {
+  if (!_editEmpId) return;
+  const deptEl = document.getElementById('edit-emp-dept');
+  const ciEl = document.getElementById('edit-emp-shift-ci');
+  const coEl = document.getElementById('edit-emp-shift-co');
+  const errEl = document.getElementById('edit-emp-error');
+  const btn = document.getElementById('edit-emp-save');
+
+  const department = deptEl ? deptEl.value.trim() : '';
+  const shiftCheckin = ciEl && ciEl.value ? `${ciEl.value}:00` : null;
+  const shiftCheckout = coEl && coEl.value ? `${coEl.value}:00` : null;
+
+  if (!department) { errEl.style.display = 'block'; errEl.textContent = 'Department is required.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await API.updateEmployee(_editEmpId, { department, shiftCheckin, shiftCheckout });
+    // Update local caches
+    const prof = _allProfiles.find(x => x.empid === _editEmpId);
+    if (prof) { prof.department = department; prof.shift_checkin = shiftCheckin; prof.shift_checkout = shiftCheckout; }
+    const emp = employees.find(x => x.id === _editEmpId);
+    if (emp) { emp.department = department; emp.shiftCheckin = shiftCheckin; emp.shiftCheckout = shiftCheckout; }
+    const modal = document.getElementById('edit-emp-modal');
+    if (modal) modal.style.display = 'none';
+    renderRemoveList(document.getElementById('re-search')?.value || '');
+  } catch (err) {
+    errEl.style.display = 'block';
+    errEl.textContent = err.message || 'Failed to update employee.';
+  }
+  btn.disabled = false; btn.textContent = 'Save Changes';
+}
+
+function closeEditEmployee() {
+  const modal = document.getElementById('edit-emp-modal');
+  if (modal) modal.style.display = 'none';
+  _editEmpId = null;
 }
 
 /* ---------- Admin Dashboard ---------- */
@@ -3007,7 +3148,9 @@ async function syncEmployeesFromSupabase() {
         joinDate: det.join_date || p.join_date || '2024-01-01',
         employmentType: det.employment_type || p.employment_type || 'Full-time',
         status: mock ? mock.status : 'Active',
-        about: det.description || mock?.about || 'Employee profile stored in system.'
+        about: det.description || mock?.about || 'Employee profile stored in system.',
+        shiftCheckin: p.shift_checkin || null,
+        shiftCheckout: p.shift_checkout || null
       };
     });
 
