@@ -133,3 +133,36 @@ DROP POLICY IF EXISTS "HR update details" ON public.employee_details;
 CREATE POLICY "HR update details"
   ON public.employee_details FOR UPDATE
   USING ( public.is_hr() );
+
+-- ---------- 4. Fix RLS empid resolution (prevents "new row violates RLS") ----------
+-- The WITH CHECK policies below compare employee_id to
+--   (SELECT empid FROM public.profiles WHERE id = auth.uid())
+-- If profiles RLS blocks that lookup (or profiles.id != auth.uid()), it
+-- returns NULL and every employee insert/update is rejected.
+-- This SECURITY DEFINER helper resolves the empid WITHOUT being blocked
+-- by profiles RLS, so the policies evaluate correctly.
+CREATE OR REPLACE FUNCTION public.app_current_empid()
+RETURNS text
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT empid FROM public.profiles WHERE id = auth.uid();
+$$;
+
+GRANT EXECUTE ON FUNCTION public.app_current_empid() TO authenticated, anon;
+
+DROP POLICY IF EXISTS "Employees insert own travel allowance" ON public.travel_allowance_requests;
+CREATE POLICY "Employees insert own travel allowance"
+  ON public.travel_allowance_requests FOR INSERT
+  WITH CHECK ( employee_id = public.app_current_empid() AND status = 'Pending' );
+
+DROP POLICY IF EXISTS "Employees update own pending travel allowance" ON public.travel_allowance_requests;
+CREATE POLICY "Employees update own pending travel allowance"
+  ON public.travel_allowance_requests FOR UPDATE
+  USING ( employee_id = public.app_current_empid() AND status = 'Pending' );
+
+DROP POLICY IF EXISTS "Employees view own travel allowance" ON public.travel_allowance_requests;
+CREATE POLICY "Employees view own travel allowance"
+  ON public.travel_allowance_requests FOR SELECT
+  USING ( employee_id = public.app_current_empid() );
