@@ -2123,6 +2123,8 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 @media (min-width: 480px) { .ta-detail-grid > div { flex: 1 1 calc(50% - 0.375rem); } }
 .ta-detail-label { font-size: 0.6875rem; color: var(--muted-foreground); text-transform: uppercase; letter-spacing: 0.02em; }
 .ta-detail-value { font-size: 0.875rem; font-weight: 500; color: var(--foreground); }
+.ta-rate-edit { display: flex; flex-direction: column; gap: 0.35rem; }
+.ta-rate-edit .input { width: 100%; }
 .ta-detail-block { margin-bottom: 0.875rem; }
 .ta-detail-block .ta-detail-label { display: block; margin-bottom: 0.25rem; }
 
