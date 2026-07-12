@@ -406,13 +406,7 @@
                     <div class="add-emp-field">
                       <label>Shift Check-in *</label>
                       <div class="shift-time">
-                        <select class="select" id="ae-shift-ci-h">
-                          <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
-                        </select>
-                        <span class="shift-colon">:</span>
-                        <select class="select" id="ae-shift-ci-m">
-                          <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
-                        </select>
+                        <input type="time" class="input" id="ae-shift-ci-t" />
                         <select class="select" id="ae-shift-ci-ap">
                           <option value="AM">AM</option>
                           <option value="PM">PM</option>
@@ -422,13 +416,7 @@
                     <div class="add-emp-field">
                       <label>Shift Check-out *</label>
                       <div class="shift-time">
-                        <select class="select" id="ae-shift-co-h">
-                          <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
-                        </select>
-                        <span class="shift-colon">:</span>
-                        <select class="select" id="ae-shift-co-m">
-                          <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
-                        </select>
+                        <input type="time" class="input" id="ae-shift-co-t" />
                         <select class="select" id="ae-shift-co-ap">
                           <option value="AM">AM</option>
                           <option value="PM">PM</option>
@@ -501,15 +489,9 @@
             </div>
             <div class="form-row horizontal" style="gap:1rem" id="edit-emp-shift-row">
               <div class="form-group" style="flex:1">
-                <label class="label" for="edit-emp-shift-ci-h">Shift Check-in</label>
+                <label class="label" for="edit-emp-shift-ci-t">Shift Check-in</label>
                 <div class="shift-time">
-                  <select class="select" id="edit-emp-shift-ci-h">
-                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
-                  </select>
-                  <span class="shift-colon">:</span>
-                  <select class="select" id="edit-emp-shift-ci-m">
-                    <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
-                  </select>
+                  <input type="time" class="input" id="edit-emp-shift-ci-t" />
                   <select class="select" id="edit-emp-shift-ci-ap">
                     <option value="AM">AM</option>
                     <option value="PM">PM</option>
@@ -517,15 +499,9 @@
                 </div>
               </div>
               <div class="form-group" style="flex:1">
-                <label class="label" for="edit-emp-shift-co-h">Shift Check-out</label>
+                <label class="label" for="edit-emp-shift-co-t">Shift Check-out</label>
                 <div class="shift-time">
-                  <select class="select" id="edit-emp-shift-co-h">
-                    <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option>
-                  </select>
-                  <span class="shift-colon">:</span>
-                  <select class="select" id="edit-emp-shift-co-m">
-                    <option value="00">00</option><option value="15">15</option><option value="30">30</option><option value="45">45</option>
-                  </select>
+                  <input type="time" class="input" id="edit-emp-shift-co-t" />
                   <select class="select" id="edit-emp-shift-co-ap">
                     <option value="AM">AM</option>
                     <option value="PM">PM</option>
