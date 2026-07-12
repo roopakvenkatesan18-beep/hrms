@@ -139,6 +139,34 @@
             </div>
           </div>
 
+          <!-- Last 7 Days Attendance Table (spans into previous months) -->
+          <div class="card" style="margin-top:1.5rem;padding:0;overflow:hidden">
+            <div class="card-header" style="padding:1rem 1.25rem;border-bottom:1px solid var(--border)">
+              <h3>Last 7 Days Attendance</h3>
+            </div>
+            <div class="table-wrap">
+              <table style="min-width:560px;table-layout:fixed">
+                <colgroup>
+                  <col class="c-date" style="width:26%" />
+                  <col class="c-time" style="width:16%" />
+                  <col class="c-time" style="width:16%" />
+                  <col class="c-punch" style="width:30%" />
+                  <col class="c-hours" style="width:12%" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Punch Details</th>
+                    <th>Hours Worked</th>
+                  </tr>
+                </thead>
+                <tbody id="emp-last7-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
           <!-- Today's Check-in + Schedule Box -->
           <div class="emp-dash-section">
             <!-- Today's Check-in -->
@@ -224,6 +252,7 @@
               <div class="view-toggle">
                 <button id="toggle-timeline" class="active">Timeline</button>
                 <button id="toggle-calendar">Calendar</button>
+                <button id="toggle-table">Table</button>
               </div>
             </div>
           </div>
@@ -258,6 +287,35 @@
               <span class="legend-item"><span class="legend-dot late"></span>Late</span>
               <span class="legend-item"><span class="legend-dot absent"></span>Absent</span>
               <span class="legend-item"><span class="legend-dot none"></span>No data</span>
+            </div>
+          </div>
+
+          <!-- Table view (month detail, mirrors HR attendance table) -->
+          <div id="att-table-view" class="card" style="margin-top:1.5rem;display:none;padding:0;overflow:hidden">
+            <div class="card-header" style="padding:1rem 1.25rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+              <h3 id="att-table-header">Attendance — This Month</h3>
+              <span class="att-cal-stat" id="att-table-summary"></span>
+            </div>
+            <div class="table-wrap">
+              <table style="min-width:560px;table-layout:fixed">
+                <colgroup>
+                  <col class="c-date" style="width:26%" />
+                  <col class="c-time" style="width:16%" />
+                  <col class="c-time" style="width:16%" />
+                  <col class="c-punch" style="width:30%" />
+                  <col class="c-hours" style="width:12%" />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Check-in</th>
+                    <th>Check-out</th>
+                    <th>Punch Details</th>
+                    <th>Hours Worked</th>
+                  </tr>
+                </thead>
+                <tbody id="att-table-body"></tbody>
+              </table>
             </div>
           </div>
         </section>
@@ -757,28 +815,28 @@
       
       // Attendance view toggles
       state.attViewMode = 'timeline';
-      document.getElementById('toggle-timeline')?.addEventListener('click', () => {
-        state.attViewMode = 'timeline';
-        document.getElementById('toggle-timeline')?.classList.add('active');
-        document.getElementById('toggle-calendar')?.classList.remove('active');
-        const tv = document.getElementById('att-timeline-view');
-        if (tv) tv.style.display = 'block';
-        const cv = document.getElementById('att-calendar-view');
-        if (cv) cv.style.display = 'none';
-        renderAttendanceEmployee();
-      });
 
-      document.getElementById('toggle-calendar')?.addEventListener('click', () => {
-        state.attViewMode = 'calendar';
-        state.calMonthOffset = 0;
-        document.getElementById('toggle-calendar')?.classList.add('active');
-        document.getElementById('toggle-timeline')?.classList.remove('active');
-        const cv = document.getElementById('att-calendar-view');
-        if (cv) cv.style.display = 'block';
+      function setAttView(mode) {
+        state.attViewMode = mode;
+        document.getElementById('toggle-timeline')?.classList.toggle('active', mode === 'timeline');
+        document.getElementById('toggle-calendar')?.classList.toggle('active', mode === 'calendar');
+        document.getElementById('toggle-table')?.classList.toggle('active', mode === 'table');
+
         const tv = document.getElementById('att-timeline-view');
-        if (tv) tv.style.display = 'none';
-        renderAttendanceCalendar();
-      });
+        const cv = document.getElementById('att-calendar-view');
+        const tav = document.getElementById('att-table-view');
+        if (tv) tv.style.display = mode === 'timeline' ? 'block' : 'none';
+        if (cv) cv.style.display = mode === 'calendar' ? 'block' : 'none';
+        if (tav) tav.style.display = mode === 'table' ? 'block' : 'none';
+
+        if (mode === 'timeline') renderAttendanceEmployee();
+        else if (mode === 'calendar') renderAttendanceCalendar();
+        else if (mode === 'table') renderAttendanceTable();
+      }
+
+      document.getElementById('toggle-timeline')?.addEventListener('click', () => setAttView('timeline'));
+      document.getElementById('toggle-calendar')?.addEventListener('click', () => { state.calMonthOffset = 0; setAttView('calendar'); });
+      document.getElementById('toggle-table')?.addEventListener('click', () => setAttView('table'));
 
       async function fetchMonthData(offset) {
         const now = new Date();
@@ -828,6 +886,11 @@
         console.error('[DEBUG] ❌ cal-next-btn NOT FOUND — event listener cannot be attached!');
       }
 
+      function renderActiveAttView() {
+        if (state.attViewMode === 'table') renderAttendanceTable();
+        else renderAttendanceCalendar();
+      }
+
       prevBtnEl?.addEventListener('click', async () => {
         console.log('[DEBUG] cal-prev-btn CLICK HANDLER FIRED');
         try {
@@ -835,7 +898,7 @@
           if (newOffset < -3) newOffset = -3;
           state.calMonthOffset = newOffset;
           await fetchMonthData(state.calMonthOffset);
-          renderAttendanceCalendar();
+          renderActiveAttView();
         } catch (err) {
           console.error('[DEBUG] ❌ Error in prev click handler:', err);
         }
@@ -848,7 +911,7 @@
           if (newOffset > 0) newOffset = 0;
           state.calMonthOffset = newOffset;
           await fetchMonthData(state.calMonthOffset);
-          renderAttendanceCalendar();
+          renderActiveAttView();
         } catch (err) {
           console.error('[DEBUG] ❌ Error in next click handler:', err);
         }
@@ -856,7 +919,7 @@
 
       document.getElementById('cal-today-btn')?.addEventListener('click', () => {
         state.calMonthOffset = 0;
-        renderAttendanceCalendar();
+        renderActiveAttView();
       });
 
       // Initial render
