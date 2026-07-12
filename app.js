@@ -609,13 +609,14 @@ function getPieData() {
 
   const myRecords = source.filter(a => a.employeeId === CURRENT_USER_ID);
 
-  let present = 0, wfh = 0, late = 0, absent = 0;
+  let present = 0, wfh = 0, late = 0, absent = 0, leave = 0;
 
   const tallyDate = (dateStr) => {
     const st = resolveAttendance(CURRENT_USER_ID, dateStr).status;
     if (st === "Present WFH") wfh++;
     else if (st === "Present") present++;
     else if (st === "Late") late++;
+    else if (st === "Leave") leave++;
     else absent++;
   };
 
@@ -635,9 +636,9 @@ function getPieData() {
   }
 
   return {
-    labels: ["Present", "Present WFH", "Late", "Absent"],
-    data: [present, wfh, late, absent],
-    colors: ["#10b981", "#6366f1", "#f59e0b", "#ef4444"],
+    labels: ["Present", "Present WFH", "Late", "Leave", "Absent"],
+    data: [present, wfh, late, leave, absent],
+    colors: ["#10b981", "#6366f1", "#f59e0b", "#64748b", "#ef4444"],
     presentTotal: present + wfh
   };
 }
@@ -1161,6 +1162,12 @@ function renderAttendanceEmployee() {
       checkInStr = hasCI ? ci : "—";
       checkOutStr = hasCO ? co : "—";
       endDotClass = "wfh";
+    } else if (res.status === "Leave") {
+      status = "leave";
+      statusLabel = "Leave";
+      checkInStr = "—";
+      checkOutStr = "—";
+      endDotClass = "leave";
     } else if (record) {
       const ci = record.checkIn;
       const co = record.checkOut;
@@ -1342,7 +1349,7 @@ function renderAttendanceCalendar() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0, leaveCount = 0;
 
   let calHTML = `
     <div class="att-cal-day-header">Sun</div>
@@ -1377,6 +1384,10 @@ function renderAttendanceCalendar() {
       checkInStr = hasCI ? res.checkIn : "";
       checkOutStr = hasCO ? res.checkOut : "";
       presentCount++;
+    } else if (res.status === "Leave") {
+      statusClass = "leave";
+      statusText = "Leave";
+      leaveCount++;
     } else if (record) {
       const hasCI = record.checkIn && record.checkIn !== "--:--" && record.checkIn !== "12:00 AM" && record.checkIn !== "Invalid Date";
       const hasCO = record.checkOut && record.checkOut !== "--:--" && record.checkOut !== "12:00 AM" && record.checkOut !== "Invalid Date";
@@ -1419,11 +1430,12 @@ function renderAttendanceCalendar() {
   // Monthly summary
   const summaryEl = document.getElementById("att-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount + leaveCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount + leaveCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
+      <span class="att-cal-stat"><span class="dot" style="background:#64748b"></span>Leave <b>${leaveCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>
     `;
@@ -3017,6 +3029,42 @@ function getWfhRequestForDate(empid, dateStr) {
   }) || null;
 }
 
+/* Approved leave covering a Sunday (capped at 2 Sundays / month) -> "Leave" */
+function getSundayLeaveForDate(empid, dateStr) {
+  if (!state.leaveRequests || !state.leaveRequests.length) return null;
+  const dt = new Date(dateStr);
+  if (dt.getDay() !== 0) return null; // only Sundays
+  const year = dt.getFullYear();
+  const month = dt.getMonth();
+
+  // All Sundays in the month, chronological
+  const sundayDates = [];
+  const dim = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= dim; d++) {
+    const s = new Date(year, month, d);
+    if (s.getDay() === 0) sundayDates.push(iso(s));
+  }
+
+  const MAX_SUNDAY_LEAVE = 2;
+  const covered = sundayDates.filter(sd =>
+    state.leaveRequests.some(l =>
+      l.employeeId === empid &&
+      l.status === "Approved" &&
+      new Date(sd) >= new Date(l.from) &&
+      new Date(sd) <= new Date(l.to)
+    )
+  );
+  const allowed = covered.slice(0, MAX_SUNDAY_LEAVE);
+  if (!allowed.includes(dateStr)) return null;
+
+  return state.leaveRequests.find(l =>
+    l.employeeId === empid &&
+    l.status === "Approved" &&
+    new Date(dateStr) >= new Date(l.from) &&
+    new Date(dateStr) <= new Date(l.to)
+  ) || { status: "Approved" };
+}
+
 function resolveAttendance(empid, dateStr) {
   const record = getAttendanceRecordForDate(empid, dateStr);
   let status = "Absent";
@@ -3039,7 +3087,17 @@ function resolveAttendance(empid, dateStr) {
     if (wfh.toTime) checkOut = wfh.toTime;
   }
 
-  return { record, status, checkIn, checkOut, overtime, punches, wfh };
+  // An approved Sunday leave fills in an otherwise-absent Sunday as "Leave"
+  if (status === "Absent") {
+    const sunLeave = getSundayLeaveForDate(empid, dateStr);
+    if (sunLeave) {
+      status = "Leave";
+      checkIn = null;
+      checkOut = null;
+    }
+  }
+
+  return { record, status, checkIn, checkOut, overtime, punches, wfh, leave: status === "Leave" ? sunLeave : null };
 }
 
 /* Build a day-by-day record set for an employee & month (within eligible range) */
@@ -3063,11 +3121,12 @@ function computeMonthDayRecords(empid, year, month) {
     let status = res.status === "Present WFH" ? "wfh"
       : res.status === "Late" ? "late"
       : res.status === "Present" ? "present"
+      : res.status === "Leave" ? "leave"
       : "absent";
     let hours = 0;
     const punches = res.punches;
 
-    if (hasCI && status !== "wfh") {
+    if (hasCI && status !== "wfh" && status !== "leave") {
       if (r.overtime && Number(r.overtime) > 0) {
         hours = Number(r.overtime);
       } else if (hasCO) {
@@ -3089,11 +3148,13 @@ function computeMonthDayRecords(empid, year, month) {
 
 function computeMonthStats(empid, year, month) {
   const { records, eligible, isCurrent } = computeMonthDayRecords(empid, year, month);
-  let present = 0, late = 0, absent = 0, totalHours = 0, totalPunches = 0;
+  let present = 0, late = 0, absent = 0, leave = 0, totalHours = 0, totalPunches = 0;
 
   records.forEach(r => {
     if (r.status === "absent") {
       absent++;
+    } else if (r.status === "leave") {
+      leave++;
     } else {
       if (r.status === "late") late++;
       present++;
@@ -3102,11 +3163,11 @@ function computeMonthStats(empid, year, month) {
     }
   });
 
-  const pct = eligible ? Math.round((present / eligible) * 100) : 0;
+  const pct = eligible ? Math.round(((present + leave) / eligible) * 100) : 0;
   const avgHours = present ? Math.round((totalHours / present) * 10) / 10 : 0;
 
   return {
-    present, absent, late,
+    present, absent, late, leave,
     totalHours: Math.round(totalHours * 10) / 10,
     totalPunches, pct, avgHours,
     eligible, isCurrent, records
@@ -3127,11 +3188,12 @@ function buildDayRecordsForDates(empid, dates) {
     let status = res.status === "Present WFH" ? "wfh"
       : res.status === "Late" ? "late"
       : res.status === "Present" ? "present"
+      : res.status === "Leave" ? "leave"
       : "absent";
     let hours = 0;
     const punches = res.punches;
 
-    if (hasCI && status !== "wfh") {
+    if (hasCI && status !== "wfh" && status !== "leave") {
       if (r.overtime && Number(r.overtime) > 0) {
         hours = Number(r.overtime);
       } else if (hasCO) {
@@ -3166,6 +3228,8 @@ function dayRecordsTableHTML(recs) {
       ? '<span class="badge warning">Late</span>'
       : r.status === "wfh"
       ? '<span class="badge present-wfh">Present WFH</span>'
+      : r.status === "leave"
+      ? '<span class="badge leave">Leave</span>'
       : '<span class="badge success">Present</span>';
 
     return `<tr>
@@ -3173,7 +3237,7 @@ function dayRecordsTableHTML(recs) {
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
       <td>${punchHTML}</td>
-      <td>${r.status === "absent" || r.status === "wfh" ? "—" : r.hours + "h"}</td>
+      <td>${r.status === "absent" || r.status === "wfh" || r.status === "leave" ? "—" : r.hours + "h"}</td>
     </tr>`;
   }).join("");
 }
@@ -3329,10 +3393,11 @@ function renderAnalyticsStats(stats) {
     <div class="stats-grid cols-4" style="margin-top:1rem">
       ${statCardClickable("present", "Present", `${stats.present}/${stats.eligible}`, range, "chart5")}
       ${statCardClickable("absent", "Absent", `${stats.absent}/${stats.eligible}`, range, "chart3")}
+      ${statCardClickable("leave", "Leave", `${stats.leave}/${stats.eligible}`, "approved Sunday leave", "chart5")}
       ${statCardHTML("Attendance %", `${stats.pct}%`, "Present / eligible days", "primary")}
-      ${statCardClickable("hours", "Total Hours", `${stats.totalHours}`, "across present days", "accent")}
     </div>
-    <div class="stats-grid cols-3" style="margin-top:1rem">
+    <div class="stats-grid cols-4" style="margin-top:1rem">
+      ${statCardClickable("hours", "Total Hours", `${stats.totalHours}`, "across present days", "accent")}
       ${statCardClickable("late", "Late Arrivals", `${stats.late}`, "after 11:00 AM", "chart3")}
       ${statCardClickable("punches", "Total Punches", `${stats.totalPunches}`, "multiple logins", "chart5")}
       ${statCardHTML("Avg Hours / Day", `${stats.avgHours}`, "on present days", "primary")}
@@ -3348,6 +3413,10 @@ function renderAnalyticsStats(stats) {
 function statRowHTML(r) {
   const badge = r.status === "late"
     ? '<span class="badge warning">Late</span>'
+    : r.status === "wfh"
+    ? '<span class="badge present-wfh">Present WFH</span>'
+    : r.status === "leave"
+    ? '<span class="badge leave">Leave</span>'
     : '<span class="badge success">Present</span>';
   return `<div class="analytics-detail-row">
     <span>${formatDate(r.dateStr)}</span>
@@ -3374,6 +3443,11 @@ function showAnalyticsStatDetail(stat, stats) {
   } else if (stat === "late") {
     title = `Late Arrivals (${stats.late})`;
     rows = stats.records.filter(r => r.status === "late").map(statRowHTML);
+  } else if (stat === "leave") {
+    title = `Leave Days (${stats.leave})`;
+    rows = stats.records.filter(r => r.status === "leave").map(r =>
+      `<div class="analytics-detail-row"><span>${formatDate(r.dateStr)}</span><span class="badge leave">Leave</span></div>`
+    );
   } else if (stat === "hours") {
     title = `Hours Worked Breakdown (${stats.totalHours}h total)`;
     rows = presentRecs.map(r =>
@@ -3401,7 +3475,7 @@ function renderAnalyticsCalendar(empid, year, month) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0, leaveCount = 0;
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   let calHTML = dayNames.map(d => `<div class="att-cal-day-header">${d}</div>`).join("");
@@ -3427,6 +3501,10 @@ function renderAnalyticsCalendar(empid, year, month) {
       checkInStr = hasCI ? res.checkIn : "";
       checkOutStr = hasCO ? res.checkOut : "";
       presentCount++;
+    } else if (res.status === "Leave") {
+      statusClass = "cal-leave";
+      statusText = "Leave";
+      leaveCount++;
     } else {
       const hasCI = r && isValidCheckIn(r.checkIn);
       const hasCO = r && isValidCheckIn(r.checkOut);
@@ -3465,11 +3543,12 @@ function renderAnalyticsCalendar(empid, year, month) {
 
   const summaryEl = document.getElementById("analytics-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount + leaveCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount + leaveCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
+      <span class="att-cal-stat"><span class="dot" style="background:#64748b"></span>Leave <b>${leaveCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>`;
   }
