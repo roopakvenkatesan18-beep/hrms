@@ -37,9 +37,9 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
           My Leave
         </button>
-        <button class="nav-item" data-page="onboarding">
+        <button class="nav-item" data-page="travel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-          My Onboarding
+          My Travel Allowance
         </button>
         <button class="nav-item" data-page="performance">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -127,11 +127,6 @@
             <div class="card chart-card">
               <div class="chart-card-header">
                 <h3 style="margin:0;font-weight:600;font-size:1.1rem">Working Hours</h3>
-                <div class="chart-toggle-group">
-                  <button class="chart-toggle active-toggle" data-chart="Bar" id="chart-type-bar">Bar</button>
-                  <button class="chart-toggle" data-chart="Area" id="chart-type-area">Area</button>
-                  <button class="chart-toggle" data-chart="Line" id="chart-type-line">Line</button>
-                </div>
               </div>
               <div class="chart-canvas-wrap">
                 <canvas id="hours-chart-canvas"></canvas>
@@ -333,6 +328,7 @@
                 <div><label>To</label><input type="date" class="input" id="leave-to" /></div>
                 <div><label>Reason</label><input class="input" id="leave-reason" placeholder="Brief reason..." /></div>
                 <button class="btn primary" id="leave-submit-btn">Submit Request</button>
+                <div id="leave-form-error" class="form-error" style="display:none"></div>
               </div>
             </div>
           </div>
@@ -343,27 +339,27 @@
         </section>
 
         <!-- ===== ONBOARDING — EMPLOYEE ===== -->
-        <section id="page-onboarding-employee" style="display:none">
-          <div class="page-header"><h1>My Onboarding</h1><p>Submit an onboarding request and track its status.</p></div>
-          <div class="stats-grid cols-3" id="onboarding-emp-stats"></div>
+        <section id="page-travel-employee" style="display:none">
+          <div class="page-header"><h1>My Travel Allowance</h1><p>Submit an travel allowance request and track its status.</p></div>
+          <div class="stats-grid cols-3" id="travel-emp-stats"></div>
           <div class="card" style="margin-top:1.5rem">
-            <div class="card-header"><h3>New Onboarding Request</h3></div>
+            <div class="card-header"><h3>New Travel Allowance Request</h3></div>
             <div class="card-body">
               <div class="leave-form">
-                <div><label>Date</label><input type="date" class="input" id="onb-date" /></div>
-                <div><label>From (Starting Location)</label><input class="input" id="onb-from" placeholder="e.g. Chennai" value="CADD TECH AVDI BRANCH" /></div>
-                <div><label>Destination</label><input class="input" id="onb-destination" placeholder="e.g. Bengaluru" /></div>
-                <div><label>Travel / Expense Cost (₹)</label><input type="number" class="input" id="onb-cost" min="0" step="0.01" placeholder="0" /></div>
-                <div style="grid-column:1/-1"><label>Purpose / About</label><textarea class="input" id="onb-purpose" rows="2" placeholder="Brief purpose..."></textarea></div>
-                <div style="grid-column:1/-1"><label>Additional Details (optional)</label><textarea class="input" id="onb-details" rows="2" placeholder="Any extra remarks..."></textarea></div>
-                <div id="onb-form-error" class="form-error" style="display:none"></div>
-                <button class="btn primary" id="onb-submit-btn">Submit Request</button>
+                <div><label>Date</label><input type="date" class="input" id="ta-date" /></div>
+                <div><label>From (Starting Location)</label><input class="input" id="ta-from" placeholder="e.g. Chennai" value="CADD TECH AVDI BRANCH" /></div>
+                <div><label>Destination</label><input class="input" id="ta-destination" placeholder="e.g. Bengaluru" /></div>
+                <div><label>Distance (km)</label><input type="number" class="input" id="ta-cost" min="0" step="0.1" placeholder="e.g. 25" /></div>
+                <div style="grid-column:1/-1"><label>Purpose / About</label><textarea class="input" id="ta-purpose" rows="2" placeholder="Brief purpose..."></textarea></div>
+                <div style="grid-column:1/-1"><label>Additional Details (optional)</label><textarea class="input" id="ta-details" rows="2" placeholder="Any extra remarks..."></textarea></div>
+                <div id="ta-form-error" class="form-error" style="display:none"></div>
+                <button class="btn primary" id="ta-submit-btn">Submit Request</button>
               </div>
             </div>
           </div>
           <div class="card" style="margin-top:1.5rem">
-            <div class="card-header"><h3>My Onboarding Requests</h3></div>
-            <div class="card-body" id="onboarding-emp-requests"></div>
+            <div class="card-header"><h3>My Travel Allowance Requests</h3></div>
+            <div class="card-body" id="travel-emp-requests"></div>
           </div>
         </section>
 
@@ -497,6 +493,15 @@
 
                   <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:1.25rem">
                     <div class="form-group">
+                      <label class="label" for="profile-branch">Branch</label>
+                      <select class="select" id="profile-branch">
+                        <option value="Avadi">Avadi</option>
+                        <option value="Poonamallee">Poonamallee</option>
+                        <option value="__custom__">Custom…</option>
+                      </select>
+                      <input class="input" id="profile-branch-custom" type="text" placeholder="Enter branch name" style="display:none; margin-top:0.5rem" />
+                    </div>
+                    <div class="form-group">
                       <label class="label" for="profile-dept">Department *</label>
                       <select class="select" id="profile-dept" required>
                         <option value="Training">Training</option>
@@ -511,11 +516,14 @@
                         <option value="Housekeeping">Housekeeping</option>
                         <option value="Telecommunication">Telecommunication</option>
                         <option value="Councillor">Councillor</option>
+                        <option value="__custom__">Custom…</option>
                       </select>
+                      <input class="input" id="profile-dept-custom" type="text" placeholder="Enter department name" style="display:none; margin-top:0.5rem" />
                     </div>
                     <div class="form-group">
-                      <label class="label" for="profile-location">Location *</label>
-                      <select class="select" id="profile-location" required>
+                      <label class="label" for="profile-location">Location</label>
+                      <select class="select" id="profile-location">
+                        <option value="">— Select —</option>
                         <option value="Bengaluru">Bengaluru</option>
                         <option value="Chennai">Chennai</option>
                         <option value="Hyderabad">Hyderabad</option>
@@ -688,8 +696,8 @@
       // Load leave requests from Supabase
       await loadLeaveRequests();
 
-      // Load onboarding requests from Supabase
-      await loadOnboardingRequests();
+      // Load travel allowance requests from Supabase
+      await loadTravelAllowanceRequests();
 
       // Load staff performance from Supabase
       await loadStaffPerformance();
@@ -755,15 +763,6 @@
         renderPieChart();
       });
 
-      // Hours chart type toggle
-      ['Bar', 'Area', 'Line'].forEach(type => {
-        document.getElementById(`chart-type-${type.toLowerCase()}`)?.addEventListener('click', () => {
-          state.chartType = type;
-          updateChartToggleStyles('chart-type', type);
-          renderHoursChart();
-        });
-      });
-
       // Schedule form
       document.getElementById('schedule-add-btn')?.addEventListener('click', () => {
         const form = document.getElementById('schedule-form');
@@ -803,8 +802,17 @@
       // Leave submit
       document.getElementById('leave-submit-btn')?.addEventListener('click', submitLeave);
 
-      // Onboarding submit
-      document.getElementById('onb-submit-btn')?.addEventListener('click', submitOnboarding);
+      // Auto-set "To" date = "From" date for a one-day leave default
+      const leaveFromEl = document.getElementById('leave-from');
+      const leaveToEl = document.getElementById('leave-to');
+      if (leaveFromEl && leaveToEl) {
+        leaveFromEl.addEventListener('change', () => {
+          if (leaveFromEl.value) leaveToEl.value = leaveFromEl.value;
+        });
+      }
+
+      // Travel Allowance submit
+      document.getElementById('ta-submit-btn')?.addEventListener('click', submitTravelAllowance);
 
       // Announcement publish
       document.getElementById('announce-publish-btn')?.addEventListener('click', publishAnnouncement);
