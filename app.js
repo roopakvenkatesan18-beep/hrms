@@ -613,7 +613,7 @@ function getPieData() {
 
   const tally = (r) => {
     const st = resolveAttendance(CURRENT_USER_ID, r.date).status;
-    if (st === "Work From Home" || st === "Present") present++;
+    if (st === "Present WFH" || st === "Present") present++;
     else if (st === "Late") late++;
     else absent++;
   };
@@ -787,9 +787,9 @@ function renderTodayCheckinStatus() {
 
   console.log('[DEBUG] renderTodayCheckinStatus:', { todayStr, CURRENT_USER_ID, found: !!todayRecord, status: res.status });
 
-  if (res.status === "Work From Home") {
+  if (res.status === "Present WFH") {
     el.innerHTML = `
-      <div style="font-size:1rem;font-weight:600;color:#6366f1;margin-bottom:0.75rem">Working From Home Today 🏠</div>
+      <div style="font-size:1rem;font-weight:600;color:#6366f1;margin-bottom:0.75rem">Present WFH Today 🏠</div>
       <p class="sub" style="margin-top:0.5rem;font-size:0.8125rem;line-height:1.5;color:var(--muted-foreground)">
         You have an approved Work From Home request for today.
       </p>`;
@@ -1114,9 +1114,9 @@ function renderAttendanceEmployee() {
 
     let status = "gray", statusLabel = "No data", endDotClass = "gray", checkInStr = "", checkOutStr = "";
 
-    if (res.status === "Work From Home") {
+    if (res.status === "Present WFH") {
       status = "wfh";
-      statusLabel = "Work From Home";
+      statusLabel = "Present WFH";
       const ci = res.checkIn, co = res.checkOut;
       const hasCI = ci && ci !== "--:--" && ci !== "12:00 AM" && ci !== "Invalid Date";
       const hasCO = co && co !== "--:--" && co !== "12:00 AM" && co !== "Invalid Date";
@@ -1304,7 +1304,7 @@ function renderAttendanceCalendar() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0, wfhCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0;
 
   let calHTML = `
     <div class="att-cal-day-header">Sun</div>
@@ -1331,14 +1331,14 @@ function renderAttendanceCalendar() {
     const res = resolveAttendance(CURRENT_USER_ID, dateStr);
     const record = res.record;
 
-    if (res.status === "Work From Home") {
+    if (res.status === "Present WFH") {
       statusClass = "wfh";
-      statusText = "Work From Home";
+      statusText = "Present WFH";
       const hasCI = res.checkIn && res.checkIn !== "--:--" && res.checkIn !== "12:00 AM" && res.checkIn !== "Invalid Date";
       const hasCO = res.checkOut && res.checkOut !== "--:--" && res.checkOut !== "12:00 AM" && res.checkOut !== "Invalid Date";
       checkInStr = hasCI ? res.checkIn : "";
       checkOutStr = hasCO ? res.checkOut : "";
-      wfhCount++;
+      presentCount++;
     } else if (record) {
       const hasCI = record.checkIn && record.checkIn !== "--:--" && record.checkIn !== "12:00 AM" && record.checkIn !== "Invalid Date";
       const hasCO = record.checkOut && record.checkOut !== "--:--" && record.checkOut !== "12:00 AM" && record.checkOut !== "Invalid Date";
@@ -1381,12 +1381,11 @@ function renderAttendanceCalendar() {
   // Monthly summary
   const summaryEl = document.getElementById("att-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount + wfhCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount + wfhCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
-      <span class="att-cal-stat"><span class="dot" style="background:#6366f1"></span>WFH <b>${wfhCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>
     `;
@@ -2969,7 +2968,7 @@ function getAttendanceRecordForDate(empid, dateStr) {
    Returns a normalized object:
      { record, status, checkIn, checkOut, overtime, punches, wfh }
    where `status` is one of: "Present", "Late", "Absent",
-   "Work From Home". */
+   "Present WFH". */
 function getWfhRequestForDate(empid, dateStr) {
   if (!state.wfhRequests || !state.wfhRequests.length) return null;
   const target = new Date(dateStr);
@@ -2997,7 +2996,7 @@ function resolveAttendance(empid, dateStr) {
 
   const wfh = getWfhRequestForDate(empid, dateStr);
   if (wfh) {
-    status = "Work From Home";
+    status = "Present WFH";
     // Use the employee-provided WFH check-in / check-out times when present
     if (wfh.fromTime) checkIn = wfh.fromTime;
     if (wfh.toTime) checkOut = wfh.toTime;
@@ -3024,7 +3023,7 @@ function computeMonthDayRecords(empid, year, month) {
     const hasCI = isValidCheckIn(ci);
     const hasCO = isValidCheckIn(co);
 
-    let status = res.status === "Work From Home" ? "wfh"
+    let status = res.status === "Present WFH" ? "wfh"
       : res.status === "Late" ? "late"
       : res.status === "Present" ? "present"
       : "absent";
@@ -3088,7 +3087,7 @@ function buildDayRecordsForDates(empid, dates) {
     const hasCI = isValidCheckIn(ci);
     const hasCO = isValidCheckIn(co);
 
-    let status = res.status === "Work From Home" ? "wfh"
+    let status = res.status === "Present WFH" ? "wfh"
       : res.status === "Late" ? "late"
       : res.status === "Present" ? "present"
       : "absent";
@@ -3129,7 +3128,7 @@ function dayRecordsTableHTML(recs) {
       : r.status === "late"
       ? '<span class="badge warning">Late</span>'
       : r.status === "wfh"
-      ? '<span class="badge work-from-home">Work From Home</span>'
+      ? '<span class="badge present-wfh">Present WFH</span>'
       : '<span class="badge success">Present</span>';
 
     return `<tr>
@@ -3365,7 +3364,7 @@ function renderAnalyticsCalendar(empid, year, month) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0, wfhCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0;
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   let calHTML = dayNames.map(d => `<div class="att-cal-day-header">${d}</div>`).join("");
@@ -3383,14 +3382,14 @@ function renderAnalyticsCalendar(empid, year, month) {
     const res = resolveAttendance(empid, dateStr);
     const r = res.record;
 
-    if (res.status === "Work From Home") {
+    if (res.status === "Present WFH") {
       statusClass = "cal-wfh";
-      statusText = "Work From Home";
+      statusText = "Present WFH";
       const hasCI = res.checkIn && isValidCheckIn(res.checkIn);
       const hasCO = res.checkOut && isValidCheckIn(res.checkOut);
       checkInStr = hasCI ? res.checkIn : "";
       checkOutStr = hasCO ? res.checkOut : "";
-      wfhCount++;
+      presentCount++;
     } else {
       const hasCI = r && isValidCheckIn(r.checkIn);
       const hasCO = r && isValidCheckIn(r.checkOut);
@@ -3429,12 +3428,11 @@ function renderAnalyticsCalendar(empid, year, month) {
 
   const summaryEl = document.getElementById("analytics-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount + wfhCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount + wfhCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
-      <span class="att-cal-stat"><span class="dot" style="background:#6366f1"></span>WFH <b>${wfhCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>`;
   }
@@ -3460,7 +3458,7 @@ function renderAnalyticsTable(stats) {
       : r.status === "late"
       ? '<span class="badge warning">Late</span>'
       : r.status === "wfh"
-      ? '<span class="badge work-from-home">Work From Home</span>'
+      ? '<span class="badge present-wfh">Present WFH</span>'
       : '<span class="badge success">Present</span>';
 
     return `<tr>
