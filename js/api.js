@@ -544,6 +544,67 @@ const API = (() => {
   }
 
   /**
+   * Fetch Work-From-Home requests. If empid provided, fetch only that employee's.
+   */
+  async function fetchWfhRequests(empid = null) {
+    try {
+      let query = supabaseClient.from('wfh_requests').select('*').order('created_at', { ascending: false });
+      if (empid) {
+        query = query.eq('employee_id', empid);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error('[API] fetchWfhRequests Error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Create a new WFH request (employee only)
+   */
+  async function createWfhRequest(employeeId, fromDate, toDate, reason) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('wfh_requests')
+        .insert([{
+          employee_id: employeeId,
+          from_date: fromDate,
+          to_date: toDate,
+          reason,
+          status: 'Pending'
+        }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('[API] createWfhRequest Error:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Update WFH request status (HR only — approve/reject)
+   */
+  async function updateWfhStatus(id, status, reviewerNote, reviewedBy) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('wfh_requests')
+        .update({ status, reviewer_note: reviewerNote, reviewed_by: reviewedBy })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('[API] updateWfhStatus Error:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Fetch all staff performance records for leaderboard
    */
   async function fetchStaffPerformance() {
@@ -854,6 +915,9 @@ const API = (() => {
     fetchTravelAllowanceRequests,
     createTravelAllowanceRequest,
     updateTravelAllowanceStatus,
+    fetchWfhRequests,
+    createWfhRequest,
+    updateWfhStatus,
     fetchStaffPerformance,
     updateStaffPerformance,
     createStaffPerformance,
