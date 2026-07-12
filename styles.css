@@ -380,13 +380,13 @@ a { color: inherit; text-decoration: none; }
   text-transform: capitalize;
 }
 
-.badge.active, .badge.present, .badge.completed, .badge.approved {
+.badge.active, .badge.present, .badge.completed, .badge.approved, .badge.success {
   background: rgb(34 197 94 / 15%); color: #15803d;
 }
-.badge.pending, .badge.draft, .badge.submitted {
+.badge.pending, .badge.draft, .badge.submitted, .badge.warning, .badge.late {
   background: rgb(245 158 11 / 15%); color: #b45309;
 }
-.badge.rejected, .badge.absent, .badge.late {
+.badge.rejected, .badge.absent {
   background: rgb(220 38 38 / 12%); color: var(--primary);
 }
 .badge.on-leave, .badge.half-day {
@@ -1876,6 +1876,14 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 #analytics-table-view td.c-punch { white-space: normal; word-break: break-word; }
 #analytics-table-view td:first-child { white-space: normal; }
 #analytics-table-view td .badge { margin-left: 0.4rem; vertical-align: middle; }
+
+/* Row status highlights (present = green, late = amber, absent = red) */
+.row-status-present { background: #ecfdf5; }
+.row-status-present:hover { background: #d1fae5; }
+.row-status-late { background: #fffbeb; }
+.row-status-late:hover { background: #fef3c7; }
+.row-status-absent { background: #fef2f2; }
+.row-status-absent:hover { background: #fee2e2; }
 
 /* ============================================================
    Performance Editor
