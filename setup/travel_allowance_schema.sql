@@ -120,6 +120,21 @@ CREATE TABLE IF NOT EXISTS public.perf_targets (
   target numeric not null default 0
 );
 
+ALTER TABLE public.perf_targets ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "HR manage perf targets" ON public.perf_targets;
+CREATE POLICY "HR manage perf targets"
+  ON public.perf_targets FOR ALL
+  TO authenticated
+  USING ( public.is_hr() )
+  WITH CHECK ( public.is_hr() );
+
+DROP POLICY IF EXISTS "Read perf targets" ON public.perf_targets;
+CREATE POLICY "Read perf targets"
+  ON public.perf_targets FOR SELECT
+  TO authenticated
+  USING ( true );
+
 -- ---------- 3. Employee Details ----------
 CREATE TABLE IF NOT EXISTS public.employee_details (
   empid text primary key,
