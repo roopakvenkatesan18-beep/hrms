@@ -564,7 +564,7 @@ const API = (() => {
   /**
    * Create a new WFH request (employee only)
    */
-  async function createWfhRequest(employeeId, fromDate, toDate, reason) {
+  async function createWfhRequest(employeeId, fromDate, toDate, fromTime, toTime, reason) {
     try {
       const { data, error } = await supabaseClient
         .from('wfh_requests')
@@ -572,6 +572,8 @@ const API = (() => {
           employee_id: employeeId,
           from_date: fromDate,
           to_date: toDate,
+          from_time: fromTime || null,
+          to_time: toTime || null,
           reason,
           status: 'Pending'
         }])
