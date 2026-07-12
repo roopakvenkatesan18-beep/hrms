@@ -2143,6 +2143,11 @@ function renderManageColumnsModal(overlay) {
             <button class="btn outline sm col-target-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Set Target</button>
             <button class="btn danger sm col-del-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Delete</button>
           </div>
+          <div class="col-target-editor" style="display:none;flex-basis:100%;gap:0.5rem;margin-top:0.5rem;align-items:center">
+            <input class="input" type="number" step="any" min="0" placeholder="e.g. 10" value="${t != null ? t : ""}" style="max-width:160px" />
+            <button class="btn primary sm col-target-apply">Apply</button>
+            <button class="btn outline sm col-target-cancel">Cancel</button>
+          </div>
         </div>`;
       }).join("")
     : `<p class="sub" style="color:var(--muted-foreground)">No columns yet.</p>`;
@@ -2198,22 +2203,38 @@ function renderManageColumnsModal(overlay) {
   });
 
   overlay.querySelectorAll(".col-target-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest(".col-manage-row");
+      const editor = row.querySelector(".col-target-editor");
+      editor.style.display = "flex";
+      editor.querySelector("input").focus();
+    });
+  });
+
+  overlay.querySelectorAll(".col-target-cancel").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest(".col-manage-row");
+      row.querySelector(".col-target-editor").style.display = "none";
+    });
+  });
+
+  overlay.querySelectorAll(".col-target-apply").forEach(btn => {
     btn.addEventListener("click", async () => {
-      const key = btn.dataset.key;
-      const current = (state.perfTargets && state.perfTargets[key] != null) ? state.perfTargets[key] : "";
-      const val = window.prompt(`Set target for "${btn.dataset.label}"\n(enter a number, e.g. 10, 12, 15)`, current);
-      if (val === null) return;
-      const num = parseFloat(val);
-      if (isNaN(num)) { alert("Please enter a valid number."); return; }
+      const row = btn.closest(".col-manage-row");
+      const key = row.dataset.key;
+      const label = row.querySelector(".col-target-btn").dataset.label;
+      const input = row.querySelector(".col-target-editor input");
+      const num = parseFloat(input.value);
+      if (isNaN(num)) { showToast("Please enter a valid number."); return; }
       try {
         await savePerfTarget(key, num);
         state.perfTargets[key] = num;
-        showToast(`✓ Target for '${btn.dataset.label}' set to ${num}`);
+        showToast(`✓ Target for '${label}' set to ${num}`);
         renderManageColumnsModal(overlay);
         renderPerformanceAdmin();
         if (typeof renderPerformanceEmployee === "function") renderPerformanceEmployee();
       } catch (e) {
-        alert("Failed to save target: " + (e.message || e));
+        showToast("Failed to save target: " + (e.message || e));
       }
     });
   });
