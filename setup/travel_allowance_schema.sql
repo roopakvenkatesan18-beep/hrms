@@ -20,7 +20,7 @@ BEGIN
     SELECT 1 FROM information_schema.tables
     WHERE table_schema = 'public' AND table_name = 'onboarding_requests'
   ) THEN
-    ALTER TABLE public.onboarding_requests RENAME TO public.travel_allowance_requests;
+    ALTER TABLE public.onboarding_requests RENAME TO travel_allowance_requests;
   END IF;
 END $$;
 
