@@ -395,6 +395,9 @@ function renderEmployeeDashboard() {
   // Today's check-in status
   renderTodayCheckinStatus();
 
+  // Last 7 days attendance table (spans into previous months via last6Months)
+  renderLast7DaysTable();
+
   // My leaves
   const myLeaves = state.leaveRequests.filter(l => l.employeeId === CURRENT_USER_ID);
   document.getElementById("emp-leaves-list").innerHTML = myLeaves.map(l => `
@@ -1039,6 +1042,35 @@ function renderAttendanceEmployee() {
   }
 
   renderSundayLeaveInfo();
+}
+
+/* Render the per-month Table view in the employee attendance section.
+   Uses the same month offset (calMonthOffset) as the calendar view so it
+   always reflects "all month detail" for the currently selected month. */
+function renderAttendanceTable() {
+  const tbody = document.getElementById("att-table-body");
+  if (!tbody) return;
+
+  const now = new Date();
+  const offset = state.calMonthOffset || 0;
+  const year = now.getFullYear();
+  const month = now.getMonth() + offset;
+
+  const stats = computeMonthStats(window.CURRENT_USER_ID, year, month);
+  tbody.innerHTML = dayRecordsTableHTML(stats.records);
+
+  const headerEl = document.getElementById("att-table-header");
+  if (headerEl) {
+    headerEl.textContent = `Attendance — ${MONTH_NAMES[month]} ${year}`;
+  }
+  const summaryEl = document.getElementById("att-table-summary");
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <span class="dot" style="background:#10b981"></span>Present <b>${stats.present}</b>
+      <span class="dot" style="background:#f59e0b"></span>Late <b>${stats.late}</b>
+      <span class="dot" style="background:#ef4444"></span>Absent <b>${stats.absent}</b>
+      · ${stats.totalHours}h total`;
+  }
 }
 
 function renderSundayLeaveInfo() {
@@ -2547,6 +2579,80 @@ function computeMonthStats(empid, year, month) {
   };
 }
 
+/* Build day-by-day records for an arbitrary list of dates (may span months) */
+function buildDayRecordsForDates(empid, dates) {
+  return dates.map(d => {
+    const dateStr = iso(d);
+    const r = getAttendanceRecordForDate(empid, dateStr);
+    const ci = r ? r.checkIn : null;
+    const co = r ? r.checkOut : null;
+    const hasCI = isValidCheckIn(ci);
+    const hasCO = isValidCheckIn(co);
+
+    let status = "absent";
+    let hours = 0;
+    const punches = (r && Array.isArray(r.punches)) ? r.punches : [];
+
+    if (hasCI) {
+      status = (r.status === "Late") ? "late" : "present";
+      if (r.overtime && Number(r.overtime) > 0) {
+        hours = Number(r.overtime);
+      } else if (hasCO) {
+        hours = hoursBetween(ci, co);
+      }
+    }
+
+    return {
+      dateStr, day: d.getDate(),
+      isWeekend: d.getDay() === 0 || d.getDay() === 6,
+      status,
+      checkIn: hasCI ? ci : null,
+      checkOut: hasCO ? co : null,
+      hours, punches
+    };
+  });
+}
+
+/* Render the HTML for a Date/Check-in/Check-out/Punch/Hours table body (HR format) */
+function dayRecordsTableHTML(recs) {
+  if (!recs || recs.length === 0) {
+    return `<tr><td colspan="5" class="empty-state">No attendance records.</td></tr>`;
+  }
+  return recs.map(r => {
+    const punchHTML = r.punches.length
+      ? r.punches.map(p => `<div>${formatPunchTime(p.in)} → ${formatPunchTime(p.out)}</div>`).join("")
+      : '<span style="color:#9ca3af">—</span>';
+
+    const statusBadge = r.status === "absent"
+      ? '<span class="badge absent">Absent</span>'
+      : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
+
+    return `<tr class="row-status-${r.status}">
+      <td>${formatDate(r.dateStr)} ${statusBadge}</td>
+      <td>${r.checkIn || "—"}</td>
+      <td>${r.checkOut || "—"}</td>
+      <td>${punchHTML}</td>
+      <td>${r.status === "absent" ? "—" : r.hours + "h"}</td>
+    </tr>`;
+  }).join("");
+}
+
+/* Last 7 calendar days table on the employee dashboard.
+   Falls back to last-6-months data when the current month has fewer elapsed days. */
+function renderLast7DaysTable() {
+  const tbody = document.getElementById("emp-last7-tbody");
+  if (!tbody) return;
+
+  const dates = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(d);
+  }
+  const recs = buildDayRecordsForDates(window.CURRENT_USER_ID, dates);
+  tbody.innerHTML = dayRecordsTableHTML(recs);
+}
+
 function statCardClickable(stat, label, value, hint, accent = "primary") {
   const trendIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
   return `<div class="card stat-card clickable" data-stat="${stat}">
@@ -2836,7 +2942,7 @@ function renderAnalyticsTable(stats) {
       ? '<span class="badge absent">Absent</span>'
       : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
 
-    return `<tr>
+    return `<tr class="row-status-${r.status}">
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
