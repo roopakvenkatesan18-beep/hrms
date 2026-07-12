@@ -769,7 +769,8 @@ function renderHoursChart() {
         pointBorderColor: "#3b82f6",
         pointBorderWidth: 2,
         borderRadius: 6,
-        barPercentage: 0.5,
+        barPercentage: 0.9,
+        categoryPercentage: 0.9,
       }]
     },
     options: {
