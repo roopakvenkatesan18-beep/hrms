@@ -100,7 +100,11 @@ CREATE POLICY "HR view all travel allowance"
 
 CREATE POLICY "Employees insert own travel allowance"
   ON public.travel_allowance_requests FOR INSERT
-  WITH CHECK ( employee_id = public.app_current_empid() AND status = 'Pending' );
+  WITH CHECK (
+    employee_id = COALESCE(public.app_current_empid(), employee_id)
+    AND employee_id IS NOT NULL
+    AND status = 'Pending'
+  );
 
 CREATE POLICY "Employees update own pending travel allowance"
   ON public.travel_allowance_requests FOR UPDATE
