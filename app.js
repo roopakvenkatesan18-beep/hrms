@@ -10,15 +10,16 @@ const state = {
   sidebarOpen: false,
   attendance: seedInitialAttendance(),
   leaveRequests: [],
-  onboardingRequests: [],
-  onboardingFilterEmp: "all",
+  travelRequests: [],
+  travelFilterEmp: "all",
+  reimbursementRate: 0,
   staffPerformance: [],
+  perfTargets: {},
   announcements: [],
 
   scheduleSlots: [],
   activeConversationId: "",
   pieMode: "Month",
-  chartType: "Bar",
   pieChart: null,
   hoursChart: null,
 
@@ -199,7 +200,7 @@ const ALL_PAGES = [
   "directory", "profile",
    "attendance-employee",
    "leave-admin", "leave-employee",
-   "onboarding-admin", "onboarding-employee",
+   "travel-admin", "travel-employee",
    "performance-admin", "performance-employee",
    "announcements", "chat", "timetable", "emp-management", "analytics"
 ];
@@ -231,8 +232,8 @@ function navigate(pageId) {
     sectionId = role === "admin" ? "page-attendance-admin" : "page-attendance-employee";
   } else if (pageId === "leave") {
     sectionId = role === "admin" ? "page-leave-admin" : "page-leave-employee";
-  } else if (pageId === "onboarding") {
-    sectionId = role === "admin" ? "page-onboarding-admin" : "page-onboarding-employee";
+  } else if (pageId === "travel") {
+    sectionId = role === "admin" ? "page-travel-admin" : "page-travel-employee";
   } else if (pageId === "performance") {
     sectionId = role === "admin" ? "page-performance-admin" : "page-performance-employee";
   } else {
@@ -259,8 +260,8 @@ function renderCurrentPage(pageId) {
     case "leave":
       state.role === "admin" ? renderLeaveAdmin() : renderLeaveEmployee();
       break;
-    case "onboarding":
-      state.role === "admin" ? renderOnboardingAdmin() : renderOnboardingEmployee();
+    case "travel":
+      state.role === "admin" ? renderTravelAllowanceAdmin() : renderTravelAllowanceEmployee();
       break;
     case "performance":
       state.role === "admin" ? renderPerformanceAdmin() : renderPerformanceEmployee();
@@ -750,30 +751,28 @@ function renderHoursChart() {
 
   if (state.hoursChart) { state.hoursChart.destroy(); state.hoursChart = null; }
 
-  const ct = state.chartType;
   const config = {
-    type: ct === "Bar" ? "bar" : "line",
+    type: "bar",
     data: {
       labels: hd.map(d => d.date),
       datasets: [{
         label: "hours",
         data: hd.map(d => d.hours),
-        backgroundColor: ct === "Area" ? "rgba(59,130,246,0.15)" : "#3b82f6",
+        backgroundColor: "#3b82f6",
         borderColor: "#3b82f6",
-        borderWidth: ct === "Bar" ? 0 : 3,
-        fill: ct === "Area",
-        tension: ct === "Line" ? 0.4 : 0.3,
-        pointRadius: ct === "Line" ? 4 : ct === "Area" ? 0 : 0,
+        borderWidth: 0,
+        fill: false,
         pointBackgroundColor: "#fff",
         pointBorderColor: "#3b82f6",
         pointBorderWidth: 2,
-        borderRadius: ct === "Bar" ? 6 : 0,
+        borderRadius: 6,
         barPercentage: 0.5,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      indexAxis: "x",
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -1480,12 +1479,20 @@ function renderLeaveEmployee() {
   `).join("");
 }
 
+function leaveFormError(msg) {
+  const errEl = document.getElementById("leave-form-error");
+  if (!errEl) return;
+  errEl.textContent = msg;
+  errEl.style.display = "block";
+}
+
 async function submitLeave() {
   const type = document.getElementById("leave-type").value;
   const from = document.getElementById("leave-from").value;
   const to = document.getElementById("leave-to").value;
   const reason = document.getElementById("leave-reason").value;
-  if (!from || !to) return;
+  if (!from || !to) { leaveFormError("Please select both From and To dates."); return; }
+  if (new Date(to) < new Date(from)) { leaveFormError("To date cannot be earlier than the From date."); return; }
   const days = Math.max(1, Math.ceil((new Date(to) - new Date(from)) / 86400000) + 1);
   try {
     await API.createLeaveRequest(CURRENT_USER_ID, type, from, to, days, reason);
@@ -1493,6 +1500,8 @@ async function submitLeave() {
     document.getElementById("leave-from").value = "";
     document.getElementById("leave-to").value = "";
     document.getElementById("leave-reason").value = "";
+    const errEl = document.getElementById("leave-form-error");
+    if (errEl) errEl.style.display = "none";
     showToast("Leave request submitted!");
     await loadLeaveRequests();
     renderLeaveEmployee();
@@ -1501,15 +1510,19 @@ async function submitLeave() {
   }
 }
 
-/* ---------- Onboarding (Supabase) ---------- */
-function mapOnboardingRow(r) {
+/* ---------- Travel Allowance (Supabase) ---------- */
+function mapTravelAllowanceRow(r) {
+  const distanceKm = r.travel_distance_km != null ? Number(r.travel_distance_km) : 0;
+  const rate = state.reimbursementRate || 0;
   return {
     id: r.id.toString(),
     employeeId: r.employee_id,
     requestDate: r.request_date,
     fromLocation: r.from_location || "",
     destination: r.destination || "",
-    travelCost: r.travel_cost != null ? Number(r.travel_cost) : 0,
+    distanceKm,
+    travelCost: distanceKm,
+    reimbursement: Math.round(distanceKm * rate * 100) / 100,
     purpose: r.purpose || "",
     additionalDetails: r.additional_details || "",
     status: r.status,
@@ -1520,49 +1533,99 @@ function mapOnboardingRow(r) {
   };
 }
 
-async function loadOnboardingRequests() {
-  const data = await API.fetchOnboardingRequests(
+async function loadTravelAllowanceRequests() {
+  await loadReimbursementRate();
+  const data = await API.fetchTravelAllowanceRequests(
     state.role === "admin" ? null : window.CURRENT_USER_ID
   );
-  state.onboardingRequests = data.map(mapOnboardingRow);
+  state.travelRequests = data.map(mapTravelAllowanceRow);
 }
 
-function renderOnboardingAdmin() {
-  const all = state.onboardingRequests;
+async function loadReimbursementRate() {
+  try {
+    const { data, error } = await supabaseClient
+      .from("app_meta")
+      .select("value")
+      .eq("key", "reimbursement_rate_per_km")
+      .maybeSingle();
+    if (error) throw error;
+    state.reimbursementRate = data && data.value != null ? parseFloat(data.value) : 0;
+  } catch (e) {
+    console.warn("Could not load reimbursement rate", e);
+    state.reimbursementRate = 0;
+  }
+}
+
+async function saveReimbursementRate(rate) {
+  const { error } = await supabaseClient
+    .from("app_meta")
+    .upsert({ key: "reimbursement_rate_per_km", value: String(rate) }, { onConflict: "key" });
+  if (error) throw error;
+  state.reimbursementRate = rate;
+}
+
+function renderTravelAllowanceAdmin() {
+  const all = state.travelRequests;
   const pending = all.filter(r => r.status === "Pending");
   const approved = all.filter(r => r.status === "Approved").length;
   const rejected = all.filter(r => r.status === "Rejected").length;
 
-  document.getElementById("onboarding-admin-stats").innerHTML =
+  document.getElementById("travel-admin-stats").innerHTML =
     statCardHTML("Pending Requests", pending.length, null, "chart3") +
     statCardHTML("Approved", approved, null, "chart5") +
     statCardHTML("Rejected", rejected, null, "primary");
 
+  // Reimbursement rate settings
+  const rateInput = document.getElementById("reimb-rate");
+  const rateSave = document.getElementById("reimb-rate-save");
+  const rateNote = document.getElementById("reimb-rate-note");
+  if (rateInput) rateInput.value = state.reimbursementRate || "";
+  if (rateSave && !rateSave.dataset.wired) {
+    rateSave.dataset.wired = "1";
+    rateSave.onclick = async () => {
+      const v = parseFloat(rateInput.value);
+      if (isNaN(v) || v < 0) {
+        rateNote.textContent = "Enter a valid rate ≥ 0.";
+        rateNote.style.color = "var(--danger, #e04646)";
+        return;
+      }
+      try {
+        await saveReimbursementRate(v);
+        rateNote.textContent = "Saved.";
+        rateNote.style.color = "var(--muted-foreground)";
+        renderTravelAllowanceAdmin();
+      } catch (e) {
+        rateNote.textContent = "Failed to save.";
+        rateNote.style.color = "var(--danger, #e04646)";
+      }
+    };
+  }
+
   // Employee filter (history per employee)
-  const filter = document.getElementById("onboarding-emp-filter");
+  const filter = document.getElementById("travel-emp-filter");
   if (filter) {
     const empIds = [...new Set(all.map(r => r.employeeId))].sort();
-    const current = state.onboardingFilterEmp;
+    const current = state.travelFilterEmp;
     filter.innerHTML = `<option value="all">All Employees</option>` +
       empIds.map(id => {
         const emp = getEmployee(id);
         return `<option value="${id}" ${current === id ? "selected" : ""}>${emp.name} (${id})</option>`;
       }).join("");
     filter.onchange = () => {
-      state.onboardingFilterEmp = filter.value;
-      renderOnboardingAdmin();
+      state.travelFilterEmp = filter.value;
+      renderTravelAllowanceAdmin();
     };
   }
 
-  const filtered = state.onboardingFilterEmp === "all"
+  const filtered = state.travelFilterEmp === "all"
     ? all
-    : all.filter(r => r.employeeId === state.onboardingFilterEmp);
+    : all.filter(r => r.employeeId === state.travelFilterEmp);
 
-  const listEl = document.getElementById("onboarding-admin-list");
+  const listEl = document.getElementById("travel-admin-list");
   if (!listEl) return;
 
   if (filtered.length === 0) {
-    listEl.innerHTML = `<p class="empty-state">No onboarding requests${state.onboardingFilterEmp !== "all" ? " for this employee" : ""}.</p>`;
+    listEl.innerHTML = `<p class="empty-state">No travel allowance requests${state.travelFilterEmp !== "all" ? " for this employee" : ""}.</p>`;
     return;
   }
 
@@ -1572,137 +1635,140 @@ function renderOnboardingAdmin() {
       ${avatarHTML(emp.name)}
       <div class="list-row-info">
         <div class="title">${escapeHtml(emp.name)} — ${escapeHtml(r.destination)}</div>
-        <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)} · ₹${r.travelCost.toLocaleString()}</div>
+        <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)} · ${r.distanceKm} km · ₹${r.reimbursement.toLocaleString()}</div>
       </div>
       ${badgeHTML(r.status)}
-      <button class="btn outline sm" onclick="openOnboardingDetail('${r.id}')">View</button>
+      <button class="btn outline sm" onclick="openTravelAllowanceDetail('${r.id}')">View</button>
     </div>`;
   }).join("");
 }
 
-function renderOnboardingEmployee() {
-  const dateEl = document.getElementById("onb-date");
+function renderTravelAllowanceEmployee() {
+  const dateEl = document.getElementById("ta-date");
   if (dateEl && !dateEl.value) dateEl.value = iso(new Date());
 
-  const mine = state.onboardingRequests;
+  const mine = state.travelRequests;
   const pending = mine.filter(r => r.status === "Pending").length;
   const approved = mine.filter(r => r.status === "Approved").length;
   const rejected = mine.filter(r => r.status === "Rejected").length;
 
-  document.getElementById("onboarding-emp-stats").innerHTML =
+  document.getElementById("travel-emp-stats").innerHTML =
     statCardHTML("Total Requests", mine.length, null, "chart5") +
     statCardHTML("Pending", pending, null, "chart3") +
     statCardHTML("Approved", approved, "Rejected: " + rejected, "primary");
 
-  const listEl = document.getElementById("onboarding-emp-requests");
+  const listEl = document.getElementById("travel-emp-requests");
   if (!listEl) return;
 
   if (mine.length === 0) {
-    listEl.innerHTML = `<p class="empty-state">No onboarding requests submitted yet.</p>`;
+    listEl.innerHTML = `<p class="empty-state">No travel allowance requests submitted yet.</p>`;
     return;
   }
 
   listEl.innerHTML = mine.map(r => `
-    <div class="onb-request-card">
-      <div class="onb-request-head">
+    <div class="ta-request-card">
+      <div class="ta-request-head">
         <div class="title">${escapeHtml(r.destination)}</div>
         ${badgeHTML(r.status)}
       </div>
       <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)}</div>
-      <div class="onb-req-meta"><strong>Purpose:</strong> ${escapeHtml(r.purpose)}</div>
-      <div class="onb-req-meta"><strong>Travel/Expense Cost:</strong> ₹${r.travelCost.toLocaleString()}</div>
-      ${r.additionalDetails ? `<div class="onb-req-meta"><strong>Details:</strong> ${escapeHtml(r.additionalDetails)}</div>` : ""}
-      ${r.reviewerNote ? `<div class="onb-reviewer-note"><strong>HR remark:</strong> ${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div>` : ""}
+      <div class="ta-req-meta"><strong>Purpose:</strong> ${escapeHtml(r.purpose)}</div>
+      <div class="ta-req-meta"><strong>Distance:</strong> ${r.distanceKm} km</div>
+      <div class="ta-req-meta"><strong>Reimbursement:</strong> ₹${r.reimbursement.toLocaleString()}</div>
+      ${r.additionalDetails ? `<div class="ta-req-meta"><strong>Details:</strong> ${escapeHtml(r.additionalDetails)}</div>` : ""}
+      ${r.reviewerNote ? `<div class="ta-reviewer-note"><strong>HR remark:</strong> ${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div>` : ""}
     </div>
   `).join("");
 }
 
-async function openOnboardingDetail(id) {
-  const r = state.onboardingRequests.find(x => x.id === id);
+async function openTravelAllowanceDetail(id) {
+  const r = state.travelRequests.find(x => x.id === id);
   if (!r) return;
   const emp = getEmployee(r.employeeId);
 
-  const modal = document.getElementById("onboarding-detail-modal");
+  const modal = document.getElementById("travel-detail-modal");
   if (!modal) return;
 
-  document.getElementById("onb-modal-title").textContent = `${emp.name} — ${r.destination}`;
-  document.getElementById("onb-modal-body").innerHTML = `
-    <div class="onb-detail-grid">
-      <div><span class="onb-detail-label">Employee</span><span class="onb-detail-value">${escapeHtml(emp.name)} (${escapeHtml(r.employeeId)})</span></div>
-      <div><span class="onb-detail-label">Date</span><span class="onb-detail-value">${formatDate(r.requestDate)}</span></div>
-      <div><span class="onb-detail-label">From</span><span class="onb-detail-value">${escapeHtml(r.fromLocation)}</span></div>
-      <div><span class="onb-detail-label">Destination</span><span class="onb-detail-value">${escapeHtml(r.destination)}</span></div>
-      <div><span class="onb-detail-label">Travel / Expense Cost</span><span class="onb-detail-value">₹${r.travelCost.toLocaleString()}</span></div>
-      <div><span class="onb-detail-label">Status</span><span class="onb-detail-value">${badgeHTML(r.status)}</span></div>
+  document.getElementById("ta-modal-title").textContent = `${emp.name} — ${r.destination}`;
+  document.getElementById("ta-modal-body").innerHTML = `
+    <div class="ta-detail-grid">
+      <div><span class="ta-detail-label">Employee</span><span class="ta-detail-value">${escapeHtml(emp.name)} (${escapeHtml(r.employeeId)})</span></div>
+      <div><span class="ta-detail-label">Date</span><span class="ta-detail-value">${formatDate(r.requestDate)}</span></div>
+      <div><span class="ta-detail-label">From</span><span class="ta-detail-value">${escapeHtml(r.fromLocation)}</span></div>
+      <div><span class="ta-detail-label">Destination</span><span class="ta-detail-value">${escapeHtml(r.destination)}</span></div>
+      <div><span class="ta-detail-label">Distance (km)</span><span class="ta-detail-value">${r.distanceKm} km</span></div>
+      <div><span class="ta-detail-label">Rate / km</span><span class="ta-detail-value">₹${(state.reimbursementRate || 0).toLocaleString()}</span></div>
+      <div><span class="ta-detail-label">Reimbursement</span><span class="ta-detail-value">₹${r.reimbursement.toLocaleString()}</span></div>
+      <div><span class="ta-detail-label">Status</span><span class="ta-detail-value">${badgeHTML(r.status)}</span></div>
     </div>
-    <div class="onb-detail-block"><span class="onb-detail-label">Purpose / About</span><div class="onb-detail-value">${escapeHtml(r.purpose)}</div></div>
-    ${r.additionalDetails ? `<div class="onb-detail-block"><span class="onb-detail-label">Additional Details</span><div class="onb-detail-value">${escapeHtml(r.additionalDetails)}</div></div>` : ""}
-    ${r.reviewerNote ? `<div class="onb-detail-block"><span class="onb-detail-label">HR Remark</span><div class="onb-detail-value">${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div></div>` : ""}
-    <div class="onb-detail-block">
-      <span class="onb-detail-label">Reviewer Comment (optional)</span>
-      <textarea class="input" id="onb-review-note" rows="2" placeholder="Add a comment for the employee...">${escapeHtml(r.reviewerNote || "")}</textarea>
+    <div class="ta-detail-block"><span class="ta-detail-label">Purpose / About</span><div class="ta-detail-value">${escapeHtml(r.purpose)}</div></div>
+    ${r.additionalDetails ? `<div class="ta-detail-block"><span class="ta-detail-label">Additional Details</span><div class="ta-detail-value">${escapeHtml(r.additionalDetails)}</div></div>` : ""}
+    ${r.reviewerNote ? `<div class="ta-detail-block"><span class="ta-detail-label">HR Remark</span><div class="ta-detail-value">${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div></div>` : ""}
+    <div class="ta-detail-block">
+      <span class="ta-detail-label">Reviewer Comment (optional)</span>
+      <textarea class="input" id="ta-review-note" rows="2" placeholder="Add a comment for the employee...">${escapeHtml(r.reviewerNote || "")}</textarea>
     </div>
   `;
 
-  const actions = document.getElementById("onb-modal-actions");
+  const actions = document.getElementById("ta-modal-actions");
   if (r.status === "Pending") {
     actions.style.display = "flex";
     actions.innerHTML = `
-      <button class="btn primary" onclick="setOnboardingStatus('${r.id}','Approved')">Approve</button>
-      <button class="btn outline" onclick="setOnboardingStatus('${r.id}','Rejected')">Reject</button>
+      <button class="btn primary" onclick="setTravelAllowanceStatus('${r.id}','Approved')">Approve</button>
+      <button class="btn outline" onclick="setTravelAllowanceStatus('${r.id}','Rejected')">Reject</button>
     `;
   } else {
     actions.style.display = "none";
     actions.innerHTML = "";
   }
 
-  modal.dataset.onbId = id;
+  modal.dataset.taId = id;
   modal.style.display = "flex";
 }
 
-function closeOnboardingModal() {
-  const modal = document.getElementById("onboarding-detail-modal");
+function closeTravelAllowanceModal() {
+  const modal = document.getElementById("travel-detail-modal");
   if (modal) modal.style.display = "none";
 }
 
-async function setOnboardingStatus(id, status) {
-  const r = state.onboardingRequests.find(x => x.id === id);
+async function setTravelAllowanceStatus(id, status) {
+  const r = state.travelRequests.find(x => x.id === id);
   if (!r) return;
 
   let note = "";
   if (status === "Rejected") {
-    const input = document.getElementById("onb-review-note");
+    const input = document.getElementById("ta-review-note");
     note = input ? input.value.trim() : "";
     if (!note) {
       note = prompt("Reason for rejection:") || "";
       if (note === null) return;
     }
   } else {
-    const input = document.getElementById("onb-review-note");
+    const input = document.getElementById("ta-review-note");
     note = input ? input.value.trim() : "";
   }
 
   try {
     const hrName = document.getElementById('user-name')?.textContent || 'HR';
-    await API.updateOnboardingStatus(parseInt(id), status, note, hrName);
-    showToast(`Onboarding ${status.toLowerCase()}`);
-    closeOnboardingModal();
-    await loadOnboardingRequests();
-    renderOnboardingAdmin();
+    await API.updateTravelAllowanceStatus(parseInt(id), status, note, hrName);
+    showToast(`Travel Allowance ${status.toLowerCase()}`);
+    closeTravelAllowanceModal();
+    await loadTravelAllowanceRequests();
+    renderTravelAllowanceAdmin();
   } catch (err) {
-    showToast("Failed to update onboarding status");
+    showToast("Failed to update travel allowance status");
   }
 }
 
-async function submitOnboarding() {
-  const requestDate = document.getElementById("onb-date").value;
-  const fromLocation = document.getElementById("onb-from").value.trim();
-  const destination = document.getElementById("onb-destination").value.trim();
-  const travelCost = parseFloat(document.getElementById("onb-cost").value) || 0;
-  const purpose = document.getElementById("onb-purpose").value.trim();
-  const additionalDetails = document.getElementById("onb-details").value.trim();
-  const errEl = document.getElementById("onb-form-error");
-  const btn = document.getElementById("onb-submit-btn");
+async function submitTravelAllowance() {
+  const requestDate = document.getElementById("ta-date").value;
+  const fromLocation = document.getElementById("ta-from").value.trim();
+  const destination = document.getElementById("ta-destination").value.trim();
+  const distanceKm = parseFloat(document.getElementById("ta-cost").value) || 0;
+  const purpose = document.getElementById("ta-purpose").value.trim();
+  const additionalDetails = document.getElementById("ta-details").value.trim();
+  const errEl = document.getElementById("ta-form-error");
+  const btn = document.getElementById("ta-submit-btn");
 
   errEl.style.display = "none";
 
@@ -1723,28 +1789,28 @@ async function submitOnboarding() {
   btn.textContent = "Submitting…";
 
   try {
-    await API.createOnboardingRequest({
+    await API.createTravelAllowanceRequest({
       employeeId: empid,
       requestDate,
       fromLocation,
       destination,
-      travelCost,
+      distanceKm,
       purpose,
       additionalDetails,
     });
 
-    document.getElementById("onb-date").value = "";
-    document.getElementById("onb-from").value = "CADD TECH AVDI BRANCH";
-    document.getElementById("onb-destination").value = "";
-    document.getElementById("onb-cost").value = "";
-    document.getElementById("onb-purpose").value = "";
-    document.getElementById("onb-details").value = "";
+    document.getElementById("ta-date").value = "";
+    document.getElementById("ta-from").value = "CADD TECH AVDI BRANCH";
+    document.getElementById("ta-destination").value = "";
+    document.getElementById("ta-cost").value = "";
+    document.getElementById("ta-purpose").value = "";
+    document.getElementById("ta-details").value = "";
 
-    showToast("Onboarding request submitted!");
-    await loadOnboardingRequests();
-    renderOnboardingEmployee();
+    showToast("Travel Allowance request submitted!");
+    await loadTravelAllowanceRequests();
+    renderTravelAllowanceEmployee();
   } catch (err) {
-    errEl.textContent = err.message || "Failed to submit onboarding request. Run onboarding_schema.sql in Supabase first.";
+    errEl.textContent = err.message || "Failed to submit travel allowance request. Run travel_allowance_schema.sql in Supabase first.";
     errEl.style.display = "block";
   } finally {
     btn.disabled = false;
@@ -1794,6 +1860,15 @@ function maxForAttr(key) {
     if (v > max) max = v;
   });
   return max;
+}
+
+/* Scale denominator for a column: HR-set target if present, else the
+   highest value across staff, else 1. Used to compute the % bar. */
+function scaleDenom(key) {
+  const t = state.perfTargets && state.perfTargets[key];
+  if (t != null && !isNaN(t)) return t > 0 ? t : 1;
+  const m = maxForAttr(key);
+  return m > 0 ? m : 1;
 }
 
 function renderLeaderboard() {
@@ -1939,7 +2014,7 @@ function mountPerfEditor(root, record, onSaved) {
     const v = draft[k];
     const valEl = root.querySelector("#perf-val-" + k);
     if (valEl) valEl.textContent = v;
-    const max = maxForAttr(k) || 1;
+    const max = scaleDenom(k);
     const bar = root.querySelector("#perf-bar-" + k);
     if (bar) bar.style.width = Math.min(100, Math.round((v / max) * 100)) + "%";
     const sl = root.querySelector("#perf-slider-" + k);
@@ -1948,7 +2023,7 @@ function mountPerfEditor(root, record, onSaved) {
 
   tilesEl.innerHTML = attrs.map(a => {
     const val = draft[a.key];
-    const max = maxForAttr(a.key) || 1;
+    const max = scaleDenom(a.key);
     const pct = Math.min(100, Math.round((val / max) * 100));
     return `<div class="perf-tile" data-key="${a.key}">
       <div class="perf-tile-head">
@@ -2057,14 +2132,20 @@ function openAddAttributeModal() {
 
 function renderManageColumnsModal(overlay) {
   const attrs = getPerfAttrs();
+  const targets = state.perfTargets || {};
   const listHTML = attrs.length
-    ? attrs.map(a => `
+    ? attrs.map(a => {
+        const t = targets[a.key];
+        const targetTxt = t != null ? `Target: ${t}` : "No target";
+        return `
         <div class="col-manage-row" data-key="${a.key}">
-          <span class="col-manage-name">${a.label.replace(/\n/g, " ")}</span>
+          <span class="col-manage-name">${a.label.replace(/\n/g, " ")}<br><span class="col-target-val">${targetTxt}</span></span>
           <div class="col-manage-actions">
+            <button class="btn outline sm col-target-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Set Target</button>
             <button class="btn danger sm col-del-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Delete</button>
           </div>
-        </div>`).join("")
+        </div>`;
+      }).join("")
     : `<p class="sub" style="color:var(--muted-foreground)">No columns yet.</p>`;
 
   overlay.innerHTML = `<div class="modal">
@@ -2116,6 +2197,47 @@ function renderManageColumnsModal(overlay) {
   overlay.querySelectorAll(".col-del-btn").forEach(btn => {
     btn.addEventListener("click", () => confirmDeleteColumn(overlay, btn.dataset.key, btn.dataset.label));
   });
+
+  overlay.querySelectorAll(".col-target-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const key = btn.dataset.key;
+      const current = (state.perfTargets && state.perfTargets[key] != null) ? state.perfTargets[key] : "";
+      const val = window.prompt(`Set target for "${btn.dataset.label}"\n(enter a number, e.g. 10, 12, 15)`, current);
+      if (val === null) return;
+      const num = parseFloat(val);
+      if (isNaN(num)) { alert("Please enter a valid number."); return; }
+      try {
+        await savePerfTarget(key, num);
+        state.perfTargets[key] = num;
+        showToast(`✓ Target for '${btn.dataset.label}' set to ${num}`);
+        renderManageColumnsModal(overlay);
+        renderPerformanceAdmin();
+        if (typeof renderPerformanceEmployee === "function") renderPerformanceEmployee();
+      } catch (e) {
+        alert("Failed to save target: " + (e.message || e));
+      }
+    });
+  });
+}
+
+async function savePerfTarget(attrKey, target) {
+  const { error } = await supabaseClient
+    .from("perf_targets")
+    .upsert({ attr_key: attrKey, target: target }, { onConflict: "attr_key" });
+  if (error) throw error;
+}
+
+async function loadPerfTargets() {
+  try {
+    const { data, error } = await supabaseClient.from("perf_targets").select("attr_key, target");
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => { map[r.attr_key] = Number(r.target); });
+    state.perfTargets = map;
+  } catch (e) {
+    console.warn("Could not load performance targets", e);
+    state.perfTargets = {};
+  }
 }
 
 function confirmDeleteColumn(overlay, key, label) {
@@ -2148,6 +2270,7 @@ function confirmDeleteColumn(overlay, key, label) {
 async function loadStaffPerformance() {
   const data = await API.fetchStaffPerformance();
   state.staffPerformance = data || [];
+  await loadPerfTargets();
 }
 
 // Resets performance points once per month (when the calendar month changes).
@@ -3131,10 +3254,6 @@ function updateChartToggleStyles(prefix, activeValue) {
   if (prefix === "pie-mode") {
     applyToggleStyle("pie-mode-week", activeValue === "Week" ? activeStyle : inactiveStyle);
     applyToggleStyle("pie-mode-month", activeValue === "Month" ? activeStyle : inactiveStyle);
-  } else if (prefix === "chart-type") {
-    ["bar", "area", "line"].forEach(t => {
-      applyToggleStyle(`chart-type-${t}`, activeValue.toLowerCase() === t ? activeStyle : inactiveStyle);
-    });
   }
 }
 
@@ -3173,6 +3292,7 @@ async function syncEmployeesFromSupabase() {
         department: det.department || p.department || 'Training',
         email: det.email || p.email || `${p.empid}@caddtech.com`,
         phone: det.phone || p.phone || '+91 99001 22334',
+        branch: det.branch || null,
         location: det.location || p.location || 'Bengaluru',
         manager: mock ? mock.manager : 'Priya Nair',
         joinDate: det.join_date || p.join_date || '2024-01-01',
@@ -3191,6 +3311,56 @@ async function syncEmployeesFromSupabase() {
   }
 }
 
+/* ---------- Custom-capable selects (branch / department) ---------- */
+const CUSTOM_OPTION = "__custom__";
+
+function setupCustomSelect(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  const inp = document.getElementById(inputId);
+  if (!sel || !inp) return;
+  if (sel._customBound) return;
+  sel._customBound = true;
+  const toggle = () => { inp.style.display = sel.value === CUSTOM_OPTION ? "block" : "none"; };
+  sel.addEventListener("change", toggle);
+  toggle();
+}
+
+function getCustomValue(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  const inp = document.getElementById(inputId);
+  if (!sel) return "";
+  if (sel.value === CUSTOM_OPTION && inp) return inp.value.trim();
+  return sel.value;
+}
+
+function addExtraOptions(selectId, values) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const customOpt = sel.querySelector(`option[value="${CUSTOM_OPTION}"]`);
+  values.forEach(v => {
+    if (!v) return;
+    const exists = Array.from(sel.options).some(o => o.value === v);
+    if (!exists) {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      if (customOpt) sel.insertBefore(opt, customOpt);
+      else sel.appendChild(opt);
+    }
+  });
+}
+
+/* Pull previously-saved custom branches/departments from other employees */
+async function loadCustomOptionsFromDb() {
+  try {
+    const { data } = await supabaseClient.from("employee_details").select("branch, department");
+    if (!data) return;
+    const branches = new Set(), depts = new Set();
+    data.forEach(d => { if (d.branch) branches.add(d.branch); if (d.department) depts.add(d.department); });
+    addExtraOptions("profile-branch", branches);
+    addExtraOptions("profile-dept", depts);
+  } catch (e) { /* employee_details may not exist yet */ }
+}
+
 function renderProfile() {
   const me = getEmployee(CURRENT_USER_ID);
   if (!me) return;
@@ -3201,6 +3371,7 @@ function renderProfile() {
   const phoneEl = document.getElementById("profile-phone");
   const deptEl = document.getElementById("profile-dept");
   const locEl = document.getElementById("profile-location");
+  const branchEl = document.getElementById("profile-branch");
   const joinedEl = document.getElementById("profile-joined");
   const empTypeEl = document.getElementById("profile-employment");
   const desigEl = document.getElementById("profile-designation");
@@ -3211,9 +3382,27 @@ function renderProfile() {
   if (emailEl) emailEl.value = me.email || "";
   if (phoneEl) phoneEl.value = me.phone || "";
   if (deptEl) deptEl.value = me.department || "Training";
-  if (locEl) locEl.value = me.location || "Bengaluru";
+  if (locEl) locEl.value = me.location || "";
+  if (branchEl) branchEl.value = me.branch || "Avadi";
   if (desigEl) desigEl.value = me.title || "";
   if (descEl) descEl.value = me.description || me.about || "";
+
+  // Bring in any custom branches/departments previously saved by others
+  loadCustomOptionsFromDb().then(() => {
+    if (deptEl && me.department && !Array.from(deptEl.options).some(o => o.value === me.department)) {
+      const opt = document.createElement("option"); opt.value = me.department; opt.textContent = me.department;
+      deptEl.insertBefore(opt, deptEl.querySelector(`option[value="${CUSTOM_OPTION}"]`));
+      deptEl.value = me.department;
+    }
+    if (branchEl && me.branch && !Array.from(branchEl.options).some(o => o.value === me.branch)) {
+      const opt = document.createElement("option"); opt.value = me.branch; opt.textContent = me.branch;
+      branchEl.insertBefore(opt, branchEl.querySelector(`option[value="${CUSTOM_OPTION}"]`));
+      branchEl.value = me.branch;
+    }
+  });
+
+  setupCustomSelect("profile-dept", "profile-dept-custom");
+  setupCustomSelect("profile-branch", "profile-branch-custom");
   
   if (joinedEl) {
     if (me.joinDate) {
@@ -3246,12 +3435,15 @@ async function saveProfile(e) {
 
   const email = document.getElementById("profile-email").value.trim();
   const phone = document.getElementById("profile-phone").value.trim();
-  const dept = document.getElementById("profile-dept").value;
+  const dept = getCustomValue("profile-dept", "profile-dept-custom");
   const location = document.getElementById("profile-location").value;
+  const branch = getCustomValue("profile-branch", "profile-branch-custom");
   const joined = document.getElementById("profile-joined").value;
   const employment = document.getElementById("profile-employment").value;
   const designation = document.getElementById("profile-designation")?.value.trim() || "";
   const description = document.getElementById("profile-description")?.value.trim() || "";
+
+  if (!dept) { alert("Please select or type a department."); saveBtn.disabled = false; saveText.textContent = "Save Changes"; return; }
 
   try {
     const user = await Session.getUser();
@@ -3267,7 +3459,8 @@ async function saveProfile(e) {
         email: email,
         phone: phone,
         department: dept,
-        location: location,
+        branch: branch || null,
+        location: location || null,
         join_date: joined || null,
         employment_type: employment
       }, {
@@ -3286,6 +3479,7 @@ async function saveProfile(e) {
       me.email = email;
       me.phone = phone;
       me.department = dept;
+      me.branch = branch;
       me.location = location;
       me.joinDate = joined;
       me.employmentType = employment;
