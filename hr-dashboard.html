@@ -74,6 +74,12 @@
           </svg>
           Leave Management
         </button>
+        <button class="nav-item" data-page="wfh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          WFH Approvals
+        </button>
         <button class="nav-item" data-page="chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path
@@ -240,6 +246,21 @@
               <h3>Pending Approvals</h3>
             </div>
             <div class="card-body" id="leave-admin-pending"></div>
+          </div>
+        </section>
+
+        <!-- ===== WFH — ADMIN ===== -->
+        <section id="page-wfh-admin" style="display:none">
+          <div class="page-header">
+            <h1>Work From Home Approvals</h1>
+            <p>Review employee Work From Home requests. Approved requests override scraped attendance status.</p>
+          </div>
+          <div class="stats-grid cols-3" id="wfh-admin-stats"></div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header">
+              <h3>Pending Approvals</h3>
+            </div>
+            <div class="card-body" id="wfh-admin-pending"></div>
           </div>
         </section>
 
@@ -713,6 +734,9 @@
 
       // Load all leave requests from Supabase (HR views all)
       await loadLeaveRequests();
+
+      // Load all WFH requests from Supabase (HR views all)
+      await loadWfhRequests();
 
       // Load all travel allowance requests from Supabase (HR views all)
       await loadTravelAllowanceRequests();
