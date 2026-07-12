@@ -153,6 +153,42 @@ function applyShiftLate() {
   });
 }
 
+/* ---- 12-hour (AM/PM) shift time helpers ---- */
+function populateShiftSelectOptions() {
+  const hours = [1,2,3,4,5,6,7,8,9,10,11,12];
+  const mins = ['00','15','30','45'];
+  ['ae-shift-ci-h','ae-shift-co-h','edit-emp-shift-ci-h','edit-emp-shift-co-h'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.options.length === 0) el.innerHTML = hours.map(h => `<option value="${h}">${h}</option>`).join('');
+  });
+  ['ae-shift-ci-m','ae-shift-co-m','edit-emp-shift-ci-m','edit-emp-shift-co-m'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.options.length === 0) el.innerHTML = mins.map(m => `<option value="${m}">${m}</option>`).join('');
+  });
+}
+
+/* Read the three selects and return "HH:MM:SS" (24h), or null if missing */
+function readShift12(hId, mId, apId) {
+  const hEl = document.getElementById(hId), mEl = document.getElementById(mId), apEl = document.getElementById(apId);
+  if (!hEl || !mEl || !apEl) return null;
+  let h = parseInt(hEl.value, 10); const m = parseInt(mEl.value, 10); const ap = apEl.value;
+  if (isNaN(h) || isNaN(m)) return null;
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':00';
+}
+
+/* Fill the three selects from a stored "HH:MM:SS" (24h) value */
+function fillShift12(value24, hId, mId, apId) {
+  const hEl = document.getElementById(hId), mEl = document.getElementById(mId), apEl = document.getElementById(apId);
+  if (!hEl || !mEl || !apEl || !value24) return;
+  let [h, m] = value24.split(':'); h = parseInt(h, 10); m = parseInt(m, 10);
+  let ap = 'AM';
+  if (h >= 12) { ap = 'PM'; if (h > 12) h -= 12; }
+  if (h === 0) h = 12;
+  hEl.value = h; mEl.value = String(m).padStart(2,'0'); apEl.value = ap;
+}
+
 /* ---------- Toast ---------- */
 let toastTimeout = null;
 function showToast(msg) {
@@ -248,6 +284,7 @@ let _allProfiles = [];   // cached profiles for remove search
 
 async function renderEmpManagement() {
   // ---- ADD EMPLOYEE FORM ----
+  populateShiftSelectOptions();
   const addForm = document.getElementById('add-emp-inline-form');
   const empidInput = document.getElementById('ae-empid');
   const emailPreview = document.getElementById('ae-email-preview');
@@ -282,8 +319,6 @@ async function renderEmpManagement() {
       const role  = document.getElementById('ae-role').value;
       const dept  = document.getElementById('ae-dept').value.trim();
       const pass  = document.getElementById('ae-password').value;
-      const shiftCiEl = document.getElementById('ae-shift-ci');
-      const shiftCoEl = document.getElementById('ae-shift-co');
       const errEl = document.getElementById('ae-error');
       const okEl  = document.getElementById('ae-success');
       const btn   = document.getElementById('ae-submit-btn');
@@ -296,11 +331,9 @@ async function renderEmpManagement() {
       // Shift is required for employees; ignored for HR
       let shiftCheckin = null, shiftCheckout = null;
       if (role === 'employee') {
-        const ci = shiftCiEl ? shiftCiEl.value : '';
-        const co = shiftCoEl ? shiftCoEl.value : '';
-        if (!ci || !co) { errEl.textContent = 'Please enter shift check-in and check-out times for employees.'; return; }
-        shiftCheckin = `${ci}:00`;
-        shiftCheckout = `${co}:00`;
+        shiftCheckin = readShift12('ae-shift-ci-h', 'ae-shift-ci-m', 'ae-shift-ci-ap');
+        shiftCheckout = readShift12('ae-shift-co-h', 'ae-shift-co-m', 'ae-shift-co-ap');
+        if (!shiftCheckin || !shiftCheckout) { errEl.textContent = 'Please enter shift check-in and check-out times for employees.'; return; }
       }
 
       btn.disabled = true; btn.textContent = 'Creating…';
@@ -416,14 +449,16 @@ function openEditEmployee(empid, name) {
   const modal = document.getElementById('edit-emp-modal');
   const nameEl = document.getElementById('edit-emp-name');
   const deptEl = document.getElementById('edit-emp-dept');
-  const ciEl = document.getElementById('edit-emp-shift-ci');
-  const coEl = document.getElementById('edit-emp-shift-co');
   const errEl = document.getElementById('edit-emp-error');
+  const shiftRow = document.getElementById('edit-emp-shift-row');
 
   if (nameEl) nameEl.textContent = `${name} (ID: ${empid})`;
   if (deptEl) deptEl.value = p.department || '';
-  if (ciEl) ciEl.value = (p.shift_checkin || '').toString().slice(0, 5);
-  if (coEl) coEl.value = (p.shift_checkout || '').toString().slice(0, 5);
+  if (shiftRow) shiftRow.style.display = (p.role === 'employee') ? 'flex' : 'none';
+  if (shiftRow && shiftRow.style.display !== 'none') {
+    fillShift12(p.shift_checkin, 'edit-emp-shift-ci-h', 'edit-emp-shift-ci-m', 'edit-emp-shift-ci-ap');
+    fillShift12(p.shift_checkout, 'edit-emp-shift-co-h', 'edit-emp-shift-co-m', 'edit-emp-shift-co-ap');
+  }
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
   if (modal) modal.style.display = 'flex';
@@ -432,14 +467,16 @@ function openEditEmployee(empid, name) {
 async function saveEditEmployee() {
   if (!_editEmpId) return;
   const deptEl = document.getElementById('edit-emp-dept');
-  const ciEl = document.getElementById('edit-emp-shift-ci');
-  const coEl = document.getElementById('edit-emp-shift-co');
   const errEl = document.getElementById('edit-emp-error');
   const btn = document.getElementById('edit-emp-save');
+  const shiftRow = document.getElementById('edit-emp-shift-row');
 
   const department = deptEl ? deptEl.value.trim() : '';
-  const shiftCheckin = ciEl && ciEl.value ? `${ciEl.value}:00` : null;
-  const shiftCheckout = coEl && coEl.value ? `${coEl.value}:00` : null;
+  let shiftCheckin = null, shiftCheckout = null;
+  if (shiftRow && shiftRow.style.display !== 'none') {
+    shiftCheckin = readShift12('edit-emp-shift-ci-h', 'edit-emp-shift-ci-m', 'edit-emp-shift-ci-ap');
+    shiftCheckout = readShift12('edit-emp-shift-co-h', 'edit-emp-shift-co-m', 'edit-emp-shift-co-ap');
+  }
 
   if (!department) { errEl.style.display = 'block'; errEl.textContent = 'Department is required.'; return; }
 
