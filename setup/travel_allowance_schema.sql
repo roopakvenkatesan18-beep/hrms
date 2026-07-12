@@ -9,9 +9,34 @@
 --   4. Create employee_details (with branch, dept, location, etc.)
 --   5. Fix RLS empid resolution (prevents "new row violates RLS")
 --
+-- Safe to re-run: it DROPs existing policies/function first, and
+-- CREATEs tables with IF NOT EXISTS (existing data is kept).
+--
 -- NOTE: app_meta (used for the reimbursement rate + monthly perf
 -- reset) is created by setup/performance_reset.sql. Keep that table.
 -- ============================================================
+
+-- ---------- Cleanup (idempotent) ----------
+DROP POLICY IF EXISTS "Employees view own onboarding" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "HR view all onboarding" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "Employees insert own onboarding" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "Employees update own pending onboarding" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "HR update onboarding" ON public.travel_allowance_requests;
+
+DROP POLICY IF EXISTS "Employees view own travel allowance" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "HR view all travel allowance" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "Employees insert own travel allowance" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "Employees update own pending travel allowance" ON public.travel_allowance_requests;
+DROP POLICY IF EXISTS "HR update travel allowance" ON public.travel_allowance_requests;
+
+DROP POLICY IF EXISTS "Employees view own details" ON public.employee_details;
+DROP POLICY IF EXISTS "HR view all details" ON public.employee_details;
+DROP POLICY IF EXISTS "Employees upsert own details" ON public.employee_details;
+DROP POLICY IF EXISTS "Employees update own details" ON public.employee_details;
+DROP POLICY IF EXISTS "HR upsert details" ON public.employee_details;
+DROP POLICY IF EXISTS "HR update details" ON public.employee_details;
+
+DROP FUNCTION IF EXISTS public.app_current_empid();
 
 -- ---------- 0. Helper: resolve current user's empid ----------
 -- SECURITY DEFINER so it is NOT blocked by profiles RLS. Must be
@@ -65,12 +90,6 @@ ALTER TABLE public.travel_allowance_requests
 -- ---------- Row Level Security ----------
 ALTER TABLE public.travel_allowance_requests ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Employees view own onboarding" ON public.travel_allowance_requests;
-DROP POLICY IF EXISTS "HR view all onboarding" ON public.travel_allowance_requests;
-DROP POLICY IF EXISTS "Employees insert own onboarding" ON public.travel_allowance_requests;
-DROP POLICY IF EXISTS "Employees update own pending onboarding" ON public.travel_allowance_requests;
-DROP POLICY IF EXISTS "HR update onboarding" ON public.travel_allowance_requests;
-
 CREATE POLICY "Employees view own travel allowance"
   ON public.travel_allowance_requests FOR SELECT
   USING ( employee_id = public.app_current_empid() );
@@ -113,32 +132,26 @@ CREATE TABLE IF NOT EXISTS public.employee_details (
 
 ALTER TABLE public.employee_details ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Employees view own details" ON public.employee_details;
 CREATE POLICY "Employees view own details"
   ON public.employee_details FOR SELECT
   USING ( empid = public.app_current_empid() );
 
-DROP POLICY IF EXISTS "HR view all details" ON public.employee_details;
 CREATE POLICY "HR view all details"
   ON public.employee_details FOR SELECT
   USING ( public.is_hr() );
 
-DROP POLICY IF EXISTS "Employees upsert own details" ON public.employee_details;
 CREATE POLICY "Employees upsert own details"
   ON public.employee_details FOR INSERT
   WITH CHECK ( empid = public.app_current_empid() );
 
-DROP POLICY IF EXISTS "Employees update own details" ON public.employee_details;
 CREATE POLICY "Employees update own details"
   ON public.employee_details FOR UPDATE
   USING ( empid = public.app_current_empid() );
 
-DROP POLICY IF EXISTS "HR upsert details" ON public.employee_details;
 CREATE POLICY "HR upsert details"
   ON public.employee_details FOR INSERT
   WITH CHECK ( public.is_hr() );
 
-DROP POLICY IF EXISTS "HR update details" ON public.employee_details;
 CREATE POLICY "HR update details"
   ON public.employee_details FOR UPDATE
   USING ( public.is_hr() );
