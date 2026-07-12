@@ -761,11 +761,11 @@ const API = (() => {
   }
 
   /**
-   * Fetch onboarding requests. If empid provided, fetch only that employee's.
+   * Fetch travel allowance requests. If empid provided, fetch only that employee's.
    */
-  async function fetchOnboardingRequests(empid = null) {
+  async function fetchTravelAllowanceRequests(empid = null) {
     try {
-      let query = supabaseClient.from('onboarding_requests').select('*').order('created_at', { ascending: false });
+      let query = supabaseClient.from('travel_allowance_requests').select('*').order('created_at', { ascending: false });
       if (empid) {
         query = query.eq('employee_id', empid);
       }
@@ -773,24 +773,24 @@ const API = (() => {
       if (error) throw error;
       return data || [];
     } catch (err) {
-      console.error('[API] fetchOnboardingRequests Error:', err);
+      console.error('[API] fetchTravelAllowanceRequests Error:', err);
       return [];
     }
   }
 
   /**
-   * Create a new onboarding request (employee only)
+   * Create a new travel allowance request (employee only)
    */
-  async function createOnboardingRequest(req) {
+  async function createTravelAllowanceRequest(req) {
     try {
       const { data, error } = await supabaseClient
-        .from('onboarding_requests')
+        .from('travel_allowance_requests')
         .insert([{
           employee_id: req.employeeId,
           request_date: req.requestDate,
           from_location: req.fromLocation,
           destination: req.destination,
-          travel_cost: req.travelCost,
+          travel_distance_km: req.distanceKm != null ? req.distanceKm : 0,
           purpose: req.purpose,
           additional_details: req.additionalDetails,
           status: 'Pending'
@@ -800,18 +800,18 @@ const API = (() => {
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('[API] createOnboardingRequest Error:', err);
+      console.error('[API] createTravelAllowanceRequest Error:', err);
       throw err;
     }
   }
 
   /**
-   * Update onboarding request status (HR only — approve/reject)
+   * Update travel allowance request status (HR only — approve/reject)
    */
-  async function updateOnboardingStatus(id, status, reviewerNote, reviewedBy) {
+  async function updateTravelAllowanceStatus(id, status, reviewerNote, reviewedBy) {
     try {
       const { data, error } = await supabaseClient
-        .from('onboarding_requests')
+        .from('travel_allowance_requests')
         .update({
           status,
           reviewer_note: reviewerNote,
@@ -824,7 +824,7 @@ const API = (() => {
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('[API] updateOnboardingStatus Error:', err);
+      console.error('[API] updateTravelAllowanceStatus Error:', err);
       throw err;
     }
   }
@@ -851,9 +851,9 @@ const API = (() => {
     fetchLeaveRequests,
     createLeaveRequest,
     updateLeaveStatus,
-    fetchOnboardingRequests,
-    createOnboardingRequest,
-    updateOnboardingStatus,
+    fetchTravelAllowanceRequests,
+    createTravelAllowanceRequest,
+    updateTravelAllowanceStatus,
     fetchStaffPerformance,
     updateStaffPerformance,
     createStaffPerformance,
