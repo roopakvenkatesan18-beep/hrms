@@ -133,7 +133,7 @@ const API = (() => {
    * Add a new employee (HR Admin only)
    * Uses a secondary Supabase client with persistSession: false so the HR admin is not logged out!
    */
-  async function addEmployee(empid, name, role, dept, password) {
+  async function addEmployee(empid, name, role, dept, password, shiftCheckin = null, shiftCheckout = null) {
     try {
       // Create a clean background client (so the HR admin isn't logged out)
       const bgClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -193,12 +193,34 @@ const API = (() => {
         p_empid: empid.trim(),
         p_name: name.trim(),
         p_role: role,
-        p_department: dept
+        p_department: dept,
+        p_shift_checkin: shiftCheckin || null,
+        p_shift_checkout: shiftCheckout || null
       });
 
       return { user: { id: authUserId } };
     } catch (err) {
       console.error("[API] addEmployee Error:", err);
+      throw err;
+    }
+  }
+
+  /**
+   * Update an employee's department and/or shift (HR only).
+   * Uses a SECURITY DEFINER RPC so HR can update profiles despite RLS.
+   */
+  async function updateEmployee(empid, updates) {
+    try {
+      const { error } = await supabaseClient.rpc('update_employee_profile', {
+        p_empid: empid,
+        p_department: updates.department ?? null,
+        p_shift_checkin: updates.shiftCheckin ?? null,
+        p_shift_checkout: updates.shiftCheckout ?? null
+      });
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("[API] updateEmployee Error:", err);
       throw err;
     }
   }
@@ -815,6 +837,7 @@ const API = (() => {
     fetchLast6MonthsByMonth,
     addEmployee,
     fetchAllProfiles,
+    updateEmployee,
     removeEmployee,
     fetchMyConversations,
     findOrCreateConversation,
