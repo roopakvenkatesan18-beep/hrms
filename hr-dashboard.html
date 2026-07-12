@@ -405,11 +405,27 @@
                   <div class="add-emp-grid" id="ae-shift-fields">
                     <div class="add-emp-field">
                       <label>Shift Check-in *</label>
-                      <input id="ae-shift-ci" class="input" type="time" />
+                      <div class="shift-time">
+                        <select class="select" id="ae-shift-ci-h"></select>
+                        <span class="shift-colon">:</span>
+                        <select class="select" id="ae-shift-ci-m"></select>
+                        <select class="select" id="ae-shift-ci-ap">
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
                     <div class="add-emp-field">
                       <label>Shift Check-out *</label>
-                      <input id="ae-shift-co" class="input" type="time" />
+                      <div class="shift-time">
+                        <select class="select" id="ae-shift-co-h"></select>
+                        <span class="shift-colon">:</span>
+                        <select class="select" id="ae-shift-co-m"></select>
+                        <select class="select" id="ae-shift-co-ap">
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                   <div id="ae-error" class="add-emp-error"></div>
@@ -475,14 +491,30 @@
                 <option value="General">General</option>
               </select>
             </div>
-            <div class="form-row horizontal" style="gap:1rem">
+            <div class="form-row horizontal" style="gap:1rem" id="edit-emp-shift-row">
               <div class="form-group" style="flex:1">
-                <label class="label" for="edit-emp-shift-ci">Shift Check-in</label>
-                <input class="input" id="edit-emp-shift-ci" type="time" />
+                <label class="label" for="edit-emp-shift-ci-h">Shift Check-in</label>
+                <div class="shift-time">
+                  <select class="select" id="edit-emp-shift-ci-h"></select>
+                  <span class="shift-colon">:</span>
+                  <select class="select" id="edit-emp-shift-ci-m"></select>
+                  <select class="select" id="edit-emp-shift-ci-ap">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
               </div>
               <div class="form-group" style="flex:1">
-                <label class="label" for="edit-emp-shift-co">Shift Check-out</label>
-                <input class="input" id="edit-emp-shift-co" type="time" />
+                <label class="label" for="edit-emp-shift-co-h">Shift Check-out</label>
+                <div class="shift-time">
+                  <select class="select" id="edit-emp-shift-co-h"></select>
+                  <span class="shift-colon">:</span>
+                  <select class="select" id="edit-emp-shift-co-m"></select>
+                  <select class="select" id="edit-emp-shift-co-ap">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div id="edit-emp-error" class="form-error" style="display:none"></div>
