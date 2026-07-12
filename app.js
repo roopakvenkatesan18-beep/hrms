@@ -1579,32 +1579,6 @@ function renderTravelAllowanceAdmin() {
     statCardHTML("Approved", approved, null, "chart5") +
     statCardHTML("Rejected", rejected, null, "primary");
 
-  // Reimbursement rate settings
-  const rateInput = document.getElementById("reimb-rate");
-  const rateSave = document.getElementById("reimb-rate-save");
-  const rateNote = document.getElementById("reimb-rate-note");
-  if (rateInput) rateInput.value = state.reimbursementRate || "";
-  if (rateSave && !rateSave.dataset.wired) {
-    rateSave.dataset.wired = "1";
-    rateSave.onclick = async () => {
-      const v = parseFloat(rateInput.value);
-      if (isNaN(v) || v < 0) {
-        rateNote.textContent = "Enter a valid rate ≥ 0.";
-        rateNote.style.color = "var(--danger, #e04646)";
-        return;
-      }
-      try {
-        await saveReimbursementRate(v);
-        rateNote.textContent = "Saved.";
-        rateNote.style.color = "var(--muted-foreground)";
-        renderTravelAllowanceAdmin();
-      } catch (e) {
-        rateNote.textContent = "Failed to save.";
-        rateNote.style.color = "var(--danger, #e04646)";
-      }
-    };
-  }
-
   // Employee filter (history per employee)
   const filter = document.getElementById("travel-emp-filter");
   if (filter) {
@@ -1701,8 +1675,11 @@ async function openTravelAllowanceDetail(id) {
       <div><span class="ta-detail-label">From</span><span class="ta-detail-value">${escapeHtml(r.fromLocation)}</span></div>
       <div><span class="ta-detail-label">Destination</span><span class="ta-detail-value">${escapeHtml(r.destination)}</span></div>
       <div><span class="ta-detail-label">Distance (km)</span><span class="ta-detail-value">${r.distanceKm} km</span></div>
-      <div><span class="ta-detail-label">Rate / km</span><span class="ta-detail-value">₹${(state.reimbursementRate || 0).toLocaleString()}</span></div>
-      <div><span class="ta-detail-label">Reimbursement</span><span class="ta-detail-value">₹${r.reimbursement.toLocaleString()}</span></div>
+      <div class="ta-rate-edit">
+        <span class="ta-detail-label">Rate (₹ / km)</span>
+        <input class="input" id="ta-rate-input" type="number" min="0" step="0.01" value="${(state.reimbursementRate || 0)}" style="max-width:160px" />
+      </div>
+      <div><span class="ta-detail-label">Total Reimbursement</span><span class="ta-detail-value" id="ta-total-value">₹${((r.distanceKm || 0) * (state.reimbursementRate || 0)).toLocaleString()}</span></div>
       <div><span class="ta-detail-label">Status</span><span class="ta-detail-value">${badgeHTML(r.status)}</span></div>
     </div>
     <div class="ta-detail-block"><span class="ta-detail-label">Purpose / About</span><div class="ta-detail-value">${escapeHtml(r.purpose)}</div></div>
@@ -1715,6 +1692,24 @@ async function openTravelAllowanceDetail(id) {
   `;
 
   const actions = document.getElementById("ta-modal-actions");
+
+  // HR sets the ₹/km rate here; total = distance × rate updates live
+  const rateInput = document.getElementById("ta-rate-input");
+  if (rateInput) {
+    const recalcTotal = () => {
+      const rate = parseFloat(rateInput.value) || 0;
+      const total = (r.distanceKm || 0) * rate;
+      const totalEl = document.getElementById("ta-total-value");
+      if (totalEl) totalEl.textContent = "₹" + total.toLocaleString();
+    };
+    rateInput.addEventListener("input", recalcTotal);
+    rateInput.addEventListener("change", async () => {
+      const rate = parseFloat(rateInput.value) || 0;
+      try { await saveReimbursementRate(rate); } catch (e) { /* non-fatal */ }
+      recalcTotal();
+    });
+  }
+
   if (r.status === "Pending") {
     actions.style.display = "flex";
     actions.innerHTML = `
