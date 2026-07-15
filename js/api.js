@@ -133,7 +133,7 @@ const API = (() => {
    * Add a new employee (HR Admin only)
    * Uses a secondary Supabase client with persistSession: false so the HR admin is not logged out!
    */
-  async function addEmployee(empid, name, role, dept, password) {
+  async function addEmployee(empid, name, role, dept, password, shiftCheckin = null, shiftCheckout = null) {
     try {
       // Create a clean background client (so the HR admin isn't logged out)
       const bgClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -193,12 +193,34 @@ const API = (() => {
         p_empid: empid.trim(),
         p_name: name.trim(),
         p_role: role,
-        p_department: dept
+        p_department: dept,
+        p_shift_checkin: shiftCheckin || null,
+        p_shift_checkout: shiftCheckout || null
       });
 
       return { user: { id: authUserId } };
     } catch (err) {
       console.error("[API] addEmployee Error:", err);
+      throw err;
+    }
+  }
+
+  /**
+   * Update an employee's department and/or shift (HR only).
+   * Uses a SECURITY DEFINER RPC so HR can update profiles despite RLS.
+   */
+  async function updateEmployee(empid, updates) {
+    try {
+      const { error } = await supabaseClient.rpc('update_employee_profile', {
+        p_empid: empid,
+        p_department: updates.department ?? null,
+        p_shift_checkin: updates.shiftCheckin ?? null,
+        p_shift_checkout: updates.shiftCheckout ?? null
+      });
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error("[API] updateEmployee Error:", err);
       throw err;
     }
   }
@@ -522,6 +544,69 @@ const API = (() => {
   }
 
   /**
+   * Fetch Work-From-Home requests. If empid provided, fetch only that employee's.
+   */
+  async function fetchWfhRequests(empid = null) {
+    try {
+      let query = supabaseClient.from('wfh_requests').select('*').order('created_at', { ascending: false });
+      if (empid) {
+        query = query.eq('employee_id', empid);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error('[API] fetchWfhRequests Error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Create a new WFH request (employee only)
+   */
+  async function createWfhRequest(employeeId, fromDate, toDate, fromTime, toTime, reason) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('wfh_requests')
+        .insert([{
+          employee_id: employeeId,
+          from_date: fromDate,
+          to_date: toDate,
+          from_time: fromTime || null,
+          to_time: toTime || null,
+          reason,
+          status: 'Pending'
+        }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('[API] createWfhRequest Error:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Update WFH request status (HR only — approve/reject)
+   */
+  async function updateWfhStatus(id, status, reviewerNote, reviewedBy) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('wfh_requests')
+        .update({ status, reviewer_note: reviewerNote, reviewed_by: reviewedBy })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('[API] updateWfhStatus Error:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Fetch all staff performance records for leaderboard
    */
   async function fetchStaffPerformance() {
@@ -739,11 +824,11 @@ const API = (() => {
   }
 
   /**
-   * Fetch onboarding requests. If empid provided, fetch only that employee's.
+   * Fetch travel allowance requests. If empid provided, fetch only that employee's.
    */
-  async function fetchOnboardingRequests(empid = null) {
+  async function fetchTravelAllowanceRequests(empid = null) {
     try {
-      let query = supabaseClient.from('onboarding_requests').select('*').order('created_at', { ascending: false });
+      let query = supabaseClient.from('travel_allowance_requests').select('*').order('created_at', { ascending: false });
       if (empid) {
         query = query.eq('employee_id', empid);
       }
@@ -751,24 +836,24 @@ const API = (() => {
       if (error) throw error;
       return data || [];
     } catch (err) {
-      console.error('[API] fetchOnboardingRequests Error:', err);
+      console.error('[API] fetchTravelAllowanceRequests Error:', err);
       return [];
     }
   }
 
   /**
-   * Create a new onboarding request (employee only)
+   * Create a new travel allowance request (employee only)
    */
-  async function createOnboardingRequest(req) {
+  async function createTravelAllowanceRequest(req) {
     try {
       const { data, error } = await supabaseClient
-        .from('onboarding_requests')
+        .from('travel_allowance_requests')
         .insert([{
           employee_id: req.employeeId,
           request_date: req.requestDate,
           from_location: req.fromLocation,
           destination: req.destination,
-          travel_cost: req.travelCost,
+          travel_distance_km: req.distanceKm != null ? req.distanceKm : 0,
           purpose: req.purpose,
           additional_details: req.additionalDetails,
           status: 'Pending'
@@ -778,18 +863,18 @@ const API = (() => {
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('[API] createOnboardingRequest Error:', err);
+      console.error('[API] createTravelAllowanceRequest Error:', err);
       throw err;
     }
   }
 
   /**
-   * Update onboarding request status (HR only — approve/reject)
+   * Update travel allowance request status (HR only — approve/reject)
    */
-  async function updateOnboardingStatus(id, status, reviewerNote, reviewedBy) {
+  async function updateTravelAllowanceStatus(id, status, reviewerNote, reviewedBy) {
     try {
       const { data, error } = await supabaseClient
-        .from('onboarding_requests')
+        .from('travel_allowance_requests')
         .update({
           status,
           reviewer_note: reviewerNote,
@@ -802,7 +887,7 @@ const API = (() => {
       if (error) throw error;
       return data;
     } catch (err) {
-      console.error('[API] updateOnboardingStatus Error:', err);
+      console.error('[API] updateTravelAllowanceStatus Error:', err);
       throw err;
     }
   }
@@ -815,6 +900,7 @@ const API = (() => {
     fetchLast6MonthsByMonth,
     addEmployee,
     fetchAllProfiles,
+    updateEmployee,
     removeEmployee,
     fetchMyConversations,
     findOrCreateConversation,
@@ -828,9 +914,12 @@ const API = (() => {
     fetchLeaveRequests,
     createLeaveRequest,
     updateLeaveStatus,
-    fetchOnboardingRequests,
-    createOnboardingRequest,
-    updateOnboardingStatus,
+    fetchTravelAllowanceRequests,
+    createTravelAllowanceRequest,
+    updateTravelAllowanceStatus,
+    fetchWfhRequests,
+    createWfhRequest,
+    updateWfhStatus,
     fetchStaffPerformance,
     updateStaffPerformance,
     createStaffPerformance,

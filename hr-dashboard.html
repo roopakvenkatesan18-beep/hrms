@@ -59,11 +59,11 @@
           </svg>
           Performance
         </button>
-        <button class="nav-item" data-page="onboarding">
+        <button class="nav-item" data-page="travel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
           </svg>
-          Onboarding
+          Travel Allowance
         </button>
         <button class="nav-item" data-page="leave">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -73,6 +73,12 @@
             <line x1="3" y1="10" x2="21" y2="10" />
           </svg>
           Leave Management
+        </button>
+        <button class="nav-item" data-page="wfh">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
+          </svg>
+          WFH Approvals
         </button>
         <button class="nav-item" data-page="chat">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -241,33 +247,83 @@
             </div>
             <div class="card-body" id="leave-admin-pending"></div>
           </div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+              <h3>Recently Processed (Last 5)</h3>
+              <button class="btn outline sm" onclick="openHistory('Leave')">View Full History</button>
+            </div>
+            <div class="card-body" id="leave-admin-recent"></div>
+          </div>
+        </section>
+
+        <!-- ===== WFH — ADMIN ===== -->
+        <section id="page-wfh-admin" style="display:none">
+          <div class="page-header">
+            <h1>Work From Home Approvals</h1>
+            <p>Review employee Work From Home requests. Approved requests override scraped attendance status.</p>
+          </div>
+          <div class="stats-grid cols-3" id="wfh-admin-stats"></div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header">
+              <h3>Pending Approvals</h3>
+            </div>
+            <div class="card-body" id="wfh-admin-pending"></div>
+          </div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+              <h3>Recently Processed (Last 5)</h3>
+              <button class="btn outline sm" onclick="openHistory('WFH')">View Full History</button>
+            </div>
+            <div class="card-body" id="wfh-admin-recent"></div>
+          </div>
         </section>
 
         <!-- ===== ONBOARDING — ADMIN ===== -->
-        <section id="page-onboarding-admin" style="display:none">
+        <section id="page-travel-admin" style="display:none">
           <div class="page-header">
-            <h1>Onboarding Management</h1>
-            <p>Review employee onboarding requests and approve or reject them.</p>
+            <h1>Travel Allowance Management</h1>
+            <p>Review employee travel allowance requests and approve or reject them.</p>
           </div>
-          <div class="stats-grid cols-3" id="onboarding-admin-stats"></div>
+          <div class="stats-grid cols-3" id="travel-admin-stats"></div>
           <div class="card" style="margin-top:1.5rem">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
-              <h3>All Onboarding Requests</h3>
-              <select class="select" id="onboarding-emp-filter" style="max-width:240px"></select>
+              <h3>Pending Approvals</h3>
+              <select class="select" id="travel-emp-filter" style="max-width:240px"></select>
             </div>
-            <div class="card-body" id="onboarding-admin-list"></div>
+            <div class="card-body" id="travel-admin-pending"></div>
+          </div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
+              <h3>Recently Processed (Last 5)</h3>
+              <button class="btn outline sm" onclick="openHistory('Travel')">View Full History</button>
+            </div>
+            <div class="card-body" id="travel-admin-recent"></div>
           </div>
         </section>
 
-        <!-- Onboarding Detail Modal -->
-        <div class="modal-overlay" id="onboarding-detail-modal" style="display:none">
+        <!-- ===== HISTORY — PER MODULE ===== -->
+        <section id="page-history" style="display:none">
+          <div class="page-header">
+            <h1 id="history-title">History</h1>
+            <p id="history-subtitle">Complete record of requests.</p>
+          </div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header">
+              <h3 id="history-list-title">All Requests</h3>
+            </div>
+            <div class="card-body" id="history-list"></div>
+          </div>
+        </section>
+
+        <!-- Travel Allowance Detail Modal -->
+        <div class="modal-overlay" id="travel-detail-modal" style="display:none">
           <div class="modal" style="max-width:560px">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
-              <h3 id="onb-modal-title" style="margin:0">Onboarding Request</h3>
-              <button class="modal-close" id="onb-modal-close-btn" onclick="closeOnboardingModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
+              <h3 id="ta-modal-title" style="margin:0">Travel Allowance Request</h3>
+              <button class="modal-close" id="ta-modal-close-btn" onclick="closeTravelAllowanceModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
             </div>
-            <div class="modal-body" id="onb-modal-body"></div>
-            <div class="modal-footer" id="onb-modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem"></div>
+            <div class="modal-body" id="ta-modal-body"></div>
+            <div class="modal-footer" id="ta-modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem"></div>
           </div>
         </div>
 
@@ -380,7 +436,7 @@
                     <div class="add-emp-field">
                       <label>Role *</label>
                       <select id="ae-role" class="select">
-                        <option value="employee">Employee</option>
+                        <option value="employee" selected>Employee</option>
                         <option value="hr">HR Admin</option>
                       </select>
                     </div>
@@ -401,6 +457,28 @@
                     <label>Password *</label>
                     <input id="ae-password" class="input" type="password" placeholder="Min. 8 characters" required />
                     <p class="add-emp-hint">Login email: <strong id="ae-email-preview">—</strong></p>
+                  </div>
+                  <div class="add-emp-grid" id="ae-shift-fields">
+                    <div class="add-emp-field">
+                      <label>Shift Check-in *</label>
+                      <div class="shift-time">
+                        <input type="time" class="input" id="ae-shift-ci-t" />
+                        <select class="select" id="ae-shift-ci-ap">
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="add-emp-field">
+                      <label>Shift Check-out *</label>
+                      <div class="shift-time">
+                        <input type="time" class="input" id="ae-shift-co-t" />
+                        <select class="select" id="ae-shift-co-ap">
+                          <option value="AM">AM</option>
+                          <option value="PM">PM</option>
+                        </select>
+                      </div>
+                    </div>
                   </div>
                   <div id="ae-error" class="add-emp-error"></div>
                   <div id="ae-success" class="add-emp-success"></div>
@@ -448,6 +526,52 @@
 
           </div><!-- end emp-mgmt-grid -->
         </section>
+
+        <!-- ===== EDIT EMPLOYEE MODAL ===== -->
+        <div class="modal-overlay" id="edit-emp-modal" style="display:none">
+          <div class="modal" id="edit-emp-modal-inner">
+            <h2>Edit Employee</h2>
+            <p class="sub" id="edit-emp-name"></p>
+            <div class="form-group">
+              <label class="label" for="edit-emp-dept">Department</label>
+              <select class="select" id="edit-emp-dept" required>
+                <option value="HR">HR</option>
+                <option value="MECH">MECH</option>
+                <option value="Civil">Civil</option>
+                <option value="IT">IT</option>
+                <option value="Admin">Admin</option>
+                <option value="General">General</option>
+              </select>
+            </div>
+            <div class="form-row horizontal" style="gap:1rem" id="edit-emp-shift-row">
+              <div class="form-group" style="flex:1">
+                <label class="label" for="edit-emp-shift-ci-t">Shift Check-in</label>
+                <div class="shift-time">
+                  <input type="time" class="input" id="edit-emp-shift-ci-t" />
+                  <select class="select" id="edit-emp-shift-ci-ap">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="label" for="edit-emp-shift-co-t">Shift Check-out</label>
+                <div class="shift-time">
+                  <input type="time" class="input" id="edit-emp-shift-co-t" />
+                  <select class="select" id="edit-emp-shift-co-ap">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div id="edit-emp-error" class="form-error" style="display:none"></div>
+            <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem">
+              <button class="btn ghost" id="edit-emp-cancel">Cancel</button>
+              <button class="btn primary" id="edit-emp-save">Save Changes</button>
+            </div>
+          </div>
+        </div>
 
         <!-- ===== ATTENDANCE ===== -->
         <section id="page-analytics" style="display:none">
@@ -646,8 +770,11 @@
       // Load all leave requests from Supabase (HR views all)
       await loadLeaveRequests();
 
-      // Load all onboarding requests from Supabase (HR views all)
-      await loadOnboardingRequests();
+      // Load all WFH requests from Supabase (HR views all)
+      await loadWfhRequests();
+
+      // Load all travel allowance requests from Supabase (HR views all)
+      await loadTravelAllowanceRequests();
 
       // Load staff performance from Supabase
       await loadStaffPerformance();
@@ -705,11 +832,11 @@
       // Leave submit
       document.getElementById('leave-submit-btn')?.addEventListener('click', submitLeave);
 
-      // Onboarding detail modal close
-      document.getElementById('onb-modal-close-btn')?.addEventListener('click', closeOnboardingModal);
-      document.getElementById('onboarding-detail-modal')?.addEventListener('click', (e) => {
-        if (e.target === document.getElementById('onboarding-detail-modal')) {
-          closeOnboardingModal();
+      // Travel Allowance detail modal close
+      document.getElementById('ta-modal-close-btn')?.addEventListener('click', closeTravelAllowanceModal);
+      document.getElementById('travel-detail-modal')?.addEventListener('click', (e) => {
+        if (e.target === document.getElementById('travel-detail-modal')) {
+          closeTravelAllowanceModal();
         }
       });
 

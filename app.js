@@ -10,9 +10,12 @@ const state = {
   sidebarOpen: false,
   attendance: seedInitialAttendance(),
   leaveRequests: [],
-  onboardingRequests: [],
-  onboardingFilterEmp: "all",
+  wfhRequests: [],
+  travelRequests: [],
+  travelFilterEmp: "all",
+  reimbursementRate: 0,
   staffPerformance: [],
+  perfTargets: {},
   announcements: [],
 
   scheduleSlots: [],
@@ -114,6 +117,75 @@ function timeStrToHours(t) {
   return p ? p.h + p.m / 60 : 0;
 }
 
+/* Parse a 24h time string ("09:00:00" or "09:00") to {h, m} */
+function parse24hTime(t) {
+  if (!t) return null;
+  const parts = String(t).split(":");
+  if (parts.length < 2) return null;
+  return { h: parseInt(parts[0], 10), m: parseInt(parts[1], 10) };
+}
+
+/* Minutes between a displayed check-in ("09:42 AM") and a 24h shift time */
+function minutesLateVsShift(checkInDisplay, shiftCheckin24h) {
+  const ci = parseAMPMTime(checkInDisplay);
+  const shift = parse24hTime(shiftCheckin24h);
+  if (!ci || !shift) return null;
+  return (ci.h * 60 + ci.m) - (shift.h * 60 + shift.m);
+}
+
+/* Recompute Present/Late using the employee's assigned shift.
+   Absent records are left untouched. Records with no shift keep their
+   prior status (legacy fixed 11:00 rule). */
+function recomputeStatusWithShift(records) {
+  if (!records || !Array.isArray(records)) return;
+  records.forEach(r => {
+    if (!r || r.status === "Absent") return;
+    const emp = employees.find(e => e.id === r.employeeId);
+    const shiftCI = emp && (emp.shiftCheckin || emp.shift_checkin);
+    if (!shiftCI) return;
+    const diff = minutesLateVsShift(r.checkIn, shiftCI);
+    if (diff === null) return;
+    r.status = diff > 30 ? "Late" : "Present";
+  });
+}
+
+/* Apply shift-based late calculation to all loaded attendance arrays */
+function applyShiftLate() {
+  ["attendance", "monthlyAttendance", "last6Months"].forEach(key => {
+    if (state[key] && Array.isArray(state[key])) recomputeStatusWithShift(state[key]);
+  });
+}
+
+/* ---- Shift time helpers: plain time input + AM/PM dropdown ---- */
+/* Read a time input (12h value, e.g. "09:00") plus an AM/PM select and
+   return "HH:MM:SS" (24h). Returns null if the input is empty. */
+function readShiftInput(inputId, apId) {
+  const el = document.getElementById(inputId);
+  const apEl = document.getElementById(apId);
+  if (!el || !el.value) return null;
+  let [h, m] = el.value.split(':');
+  h = parseInt(h, 10); m = parseInt(m, 10);
+  if (isNaN(h) || isNaN(m)) return null;
+  const ap = apEl ? apEl.value : 'AM';
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':00';
+}
+
+/* Fill a time input + AM/PM select from a stored "HH:MM:SS" (24h) value */
+function fillShiftInput(value24, inputId, apId) {
+  const el = document.getElementById(inputId);
+  const apEl = document.getElementById(apId);
+  if (!el || !value24) return;
+  let [h, m] = value24.split(':');
+  h = parseInt(h, 10); m = parseInt(m, 10);
+  let ap = 'AM';
+  if (h >= 12) { ap = 'PM'; if (h > 12) h -= 12; }
+  if (h === 0) h = 12;
+  el.value = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  if (apEl) apEl.value = ap;
+}
+
 /* ---------- Toast ---------- */
 let toastTimeout = null;
 function showToast(msg) {
@@ -130,9 +202,10 @@ const ALL_PAGES = [
   "directory", "profile",
    "attendance-employee",
    "leave-admin", "leave-employee",
-   "onboarding-admin", "onboarding-employee",
+   "wfh-admin", "wfh-employee",
+   "travel-admin", "travel-employee",
    "performance-admin", "performance-employee",
-   "announcements", "chat", "timetable", "emp-management", "analytics"
+   "announcements", "chat", "timetable", "emp-management", "analytics", "history"
 ];
 
 function navigate(pageId) {
@@ -162,8 +235,12 @@ function navigate(pageId) {
     sectionId = role === "admin" ? "page-attendance-admin" : "page-attendance-employee";
   } else if (pageId === "leave") {
     sectionId = role === "admin" ? "page-leave-admin" : "page-leave-employee";
-  } else if (pageId === "onboarding") {
-    sectionId = role === "admin" ? "page-onboarding-admin" : "page-onboarding-employee";
+  } else if (pageId === "wfh") {
+    sectionId = role === "admin" ? "page-wfh-admin" : "page-wfh-employee";
+  } else if (pageId === "travel") {
+    sectionId = role === "admin" ? "page-travel-admin" : "page-travel-employee";
+  } else if (pageId === "history") {
+    sectionId = "page-history";
   } else if (pageId === "performance") {
     sectionId = role === "admin" ? "page-performance-admin" : "page-performance-employee";
   } else {
@@ -190,8 +267,11 @@ function renderCurrentPage(pageId) {
     case "leave":
       state.role === "admin" ? renderLeaveAdmin() : renderLeaveEmployee();
       break;
-    case "onboarding":
-      state.role === "admin" ? renderOnboardingAdmin() : renderOnboardingEmployee();
+    case "wfh":
+      state.role === "admin" ? renderWfhAdmin() : renderWfhEmployee();
+      break;
+    case "travel":
+      state.role === "admin" ? renderTravelAllowanceAdmin() : renderTravelAllowanceEmployee();
       break;
     case "performance":
       state.role === "admin" ? renderPerformanceAdmin() : renderPerformanceEmployee();
@@ -201,7 +281,99 @@ function renderCurrentPage(pageId) {
     case "timetable": renderTimetable(); break;
     case "emp-management": renderEmpManagement(); break;
     case "analytics": renderEmployeeAnalytics(); break;
+    case "history": renderHistory(); break;
   }
+}
+
+/* ---------- History (per module) ---------- */
+const HISTORY_KIND_LABEL = {
+  Leave: "Leave",
+  WFH: "Work From Home",
+  Travel: "Travel Allowance",
+};
+
+function openHistory(kind) {
+  state.historyKind = kind || "Leave";
+  navigate("history");
+}
+
+async function renderHistory() {
+  const kind = state.historyKind || "Leave";
+
+  // Ensure the latest data is loaded
+  try {
+    await Promise.all([
+      loadLeaveRequests(),
+      loadWfhRequests(),
+      loadTravelAllowanceRequests(),
+    ]);
+  } catch (e) { /* non-fatal */ }
+
+  let source, scoped;
+  if (kind === "WFH") {
+    source = state.wfhRequests.map(w => ({
+      employeeId: w.employeeId,
+      title: "Work From Home",
+      sub: `${formatDate(w.from)} to ${formatDate(w.to)} · ${w.days} days · ${w.reason}${(w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : ""}`,
+      status: w.status,
+      reviewerNote: w.reviewerNote,
+      ts: w.appliedOn || "",
+    }));
+  } else if (kind === "Travel") {
+    source = state.travelRequests.map(r => ({
+      employeeId: r.employeeId,
+      title: r.destination,
+      sub: `${r.fromLocation} → ${r.destination} · ${formatDate(r.requestDate)} · ${r.distanceKm} km · ₹${r.reimbursement.toLocaleString()}`,
+      status: r.status,
+      reviewerNote: r.reviewerNote,
+      ts: r.createdAt || r.requestDate || "",
+    }));
+  } else {
+    source = state.leaveRequests.map(l => ({
+      employeeId: l.employeeId,
+      title: `${l.type} Leave`,
+      sub: `${formatDate(l.from)} to ${formatDate(l.to)} · ${l.days} days · ${l.reason}`,
+      status: l.status,
+      reviewerNote: l.reviewerNote,
+      ts: l.appliedOn || "",
+    }));
+  }
+
+  scoped = state.role === "admin"
+    ? source
+    : source.filter(x => x.employeeId === window.CURRENT_USER_ID);
+
+  const label = HISTORY_KIND_LABEL[kind] || "Request";
+  const titleEl = document.getElementById("history-title");
+  const subEl = document.getElementById("history-subtitle");
+  const listTitleEl = document.getElementById("history-list-title");
+  if (titleEl) titleEl.textContent = `${label} History`;
+  if (subEl) subEl.textContent = `Complete record of all ${label} requests.`;
+  if (listTitleEl) listTitleEl.textContent = `All ${label} Requests`;
+
+  scoped.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+
+  const listEl = document.getElementById("history-list");
+  if (!listEl) return;
+
+  if (scoped.length === 0) {
+    listEl.innerHTML = `<p class="empty-state">No ${label} requests found.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = scoped.map(it => {
+    const emp = getEmployee(it.employeeId);
+    const name = emp.name || it.employeeId || "—";
+    return `<div class="list-row">
+      ${avatarHTML(name)}
+      <div class="list-row-info">
+        <div class="title">${escapeHtml(name)} — ${escapeHtml(it.title)}</div>
+        <div class="sub">${escapeHtml(it.sub)}</div>
+      </div>
+      ${badgeHTML(it.status)}
+      ${it.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(it.reviewerNote)}</span>` : ""}
+    </div>`;
+  }).join("");
 }
 
 /* ---------- Add / Remove Employee ---------- */
@@ -222,6 +394,18 @@ async function renderEmpManagement() {
     });
   }
 
+  // Show/hide shift fields based on role (employees only)
+  const roleSel = document.getElementById('ae-role');
+  const shiftFields = document.getElementById('ae-shift-fields');
+  const syncShiftVisibility = () => {
+    if (roleSel && shiftFields) shiftFields.style.display = roleSel.value === 'employee' ? 'grid' : 'none';
+  };
+  if (roleSel && !roleSel._empMgmtBound) {
+    roleSel._empMgmtBound = true;
+    roleSel.addEventListener('change', syncShiftVisibility);
+  }
+  syncShiftVisibility();
+
   if (addForm && !addForm._empMgmtBound) {
     addForm._empMgmtBound = true;
     addForm.addEventListener('submit', async (e) => {
@@ -240,13 +424,21 @@ async function renderEmpManagement() {
       if (!empid || !name || !dept || !pass) { errEl.textContent = 'Please fill all fields.'; return; }
       if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
 
+      // Shift is required for employees; ignored for HR
+      let shiftCheckin = null, shiftCheckout = null;
+      if (role === 'employee') {
+        shiftCheckin = readShiftInput('ae-shift-ci-t', 'ae-shift-ci-ap');
+        shiftCheckout = readShiftInput('ae-shift-co-t', 'ae-shift-co-ap');
+        if (!shiftCheckin || !shiftCheckout) { errEl.textContent = 'Please enter shift check-in and check-out times for employees.'; return; }
+      }
+
       btn.disabled = true; btn.textContent = 'Creating…';
       try {
-        await API.addEmployee(empid, name, role, dept, pass);
+        await API.addEmployee(empid, name, role, dept, pass, shiftCheckin, shiftCheckout);
         okEl.textContent = `✓ ${name} (ID: ${empid}) created! They can now log in.`;
         addForm.reset(); emailPreview.textContent = '—';
         // Push into local employees array so directory updates
-        employees.push({ id: empid, name, role, department: dept, email: `${empid}@caddtech.com`, status: 'Active' });
+        employees.push({ id: empid, name, role, department: dept, email: `${empid}@caddtech.com`, status: 'Active', shiftCheckin, shiftCheckout });
         // Refresh the profiles cache for the remove list
         _allProfiles = await API.fetchAllProfiles();
         renderRemoveList(document.getElementById('re-search')?.value || '');
@@ -265,6 +457,16 @@ async function renderEmpManagement() {
   if (reSearch && !reSearch._empMgmtBound) {
     reSearch._empMgmtBound = true;
     reSearch.addEventListener('input', () => renderRemoveList(reSearch.value));
+  }
+
+  // ---- EDIT EMPLOYEE MODAL WIRING ----
+  if (!renderEmpManagement._editBound) {
+    renderEmpManagement._editBound = true;
+    document.getElementById('edit-emp-save')?.addEventListener('click', saveEditEmployee);
+    document.getElementById('edit-emp-cancel')?.addEventListener('click', closeEditEmployee);
+    document.getElementById('edit-emp-modal')?.addEventListener('click', (e) => {
+      if (e.target === document.getElementById('edit-emp-modal')) closeEditEmployee();
+    });
   }
 }
 
@@ -294,10 +496,16 @@ function renderRemoveList(query) {
           <div class="remove-emp-meta">ID: ${escapeHtml(p.empid)} · ${escapeHtml(p.role)} · ${escapeHtml(p.department || '—')}</div>
         </div>
       </div>
-      <button onclick="confirmRemoveEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="remove-emp-btn">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-        Remove
-      </button>
+      <div class="remove-emp-actions">
+        <button onclick="openEditEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="edit-emp-btn" title="Edit department & shift">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          Edit
+        </button>
+        <button onclick="confirmRemoveEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="remove-emp-btn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          Remove
+        </button>
+      </div>
     </div>
   `).join('');
 }
@@ -324,6 +532,72 @@ async function confirmRemoveEmployee(empid, name) {
     msgEl.style.color = '#dc2626';
     msgEl.textContent = err.message || 'Failed to remove employee.';
   }
+}
+
+/* ---------- Edit Employee (department + shift) ---------- */
+let _editEmpId = null;
+
+function openEditEmployee(empid, name) {
+  const p = _allProfiles.find(x => x.empid === empid) || employees.find(x => x.id === empid);
+  if (!p) return;
+  _editEmpId = empid;
+
+  const modal = document.getElementById('edit-emp-modal');
+  const nameEl = document.getElementById('edit-emp-name');
+  const deptEl = document.getElementById('edit-emp-dept');
+  const errEl = document.getElementById('edit-emp-error');
+  const shiftRow = document.getElementById('edit-emp-shift-row');
+
+  if (nameEl) nameEl.textContent = `${name} (ID: ${empid})`;
+  if (deptEl) deptEl.value = p.department || '';
+  if (shiftRow) shiftRow.style.display = (p.role === 'employee') ? 'flex' : 'none';
+  if (shiftRow && shiftRow.style.display !== 'none') {
+    fillShiftInput(p.shift_checkin, 'edit-emp-shift-ci-t', 'edit-emp-shift-ci-ap');
+    fillShiftInput(p.shift_checkout, 'edit-emp-shift-co-t', 'edit-emp-shift-co-ap');
+  }
+  if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+
+  if (modal) modal.style.display = 'flex';
+}
+
+async function saveEditEmployee() {
+  if (!_editEmpId) return;
+  const deptEl = document.getElementById('edit-emp-dept');
+  const errEl = document.getElementById('edit-emp-error');
+  const btn = document.getElementById('edit-emp-save');
+  const shiftRow = document.getElementById('edit-emp-shift-row');
+
+  const department = deptEl ? deptEl.value.trim() : '';
+  let shiftCheckin = null, shiftCheckout = null;
+  if (shiftRow && shiftRow.style.display !== 'none') {
+    shiftCheckin = readShiftInput('edit-emp-shift-ci-t', 'edit-emp-shift-ci-ap');
+    shiftCheckout = readShiftInput('edit-emp-shift-co-t', 'edit-emp-shift-co-ap');
+  }
+
+  if (!department) { errEl.style.display = 'block'; errEl.textContent = 'Department is required.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await API.updateEmployee(_editEmpId, { department, shiftCheckin, shiftCheckout });
+    // Update local caches
+    const prof = _allProfiles.find(x => x.empid === _editEmpId);
+    if (prof) { prof.department = department; prof.shift_checkin = shiftCheckin; prof.shift_checkout = shiftCheckout; }
+    const emp = employees.find(x => x.id === _editEmpId);
+    if (emp) { emp.department = department; emp.shiftCheckin = shiftCheckin; emp.shiftCheckout = shiftCheckout; }
+    const modal = document.getElementById('edit-emp-modal');
+    if (modal) modal.style.display = 'none';
+    renderRemoveList(document.getElementById('re-search')?.value || '');
+  } catch (err) {
+    errEl.style.display = 'block';
+    errEl.textContent = err.message || 'Failed to update employee.';
+  }
+  btn.disabled = false; btn.textContent = 'Save Changes';
+}
+
+function closeEditEmployee() {
+  const modal = document.getElementById('edit-emp-modal');
+  if (modal) modal.style.display = 'none';
+  _editEmpId = null;
 }
 
 /* ---------- Admin Dashboard ---------- */
@@ -395,6 +669,9 @@ function renderEmployeeDashboard() {
   // Today's check-in status
   renderTodayCheckinStatus();
 
+  // Last 7 days attendance table (spans into previous months via last6Months)
+  renderLast7DaysTable();
+
   // My leaves
   const myLeaves = state.leaveRequests.filter(l => l.employeeId === CURRENT_USER_ID);
   document.getElementById("emp-leaves-list").innerHTML = myLeaves.map(l => `
@@ -426,63 +703,38 @@ function getPieData() {
 
   const myRecords = source.filter(a => a.employeeId === CURRENT_USER_ID);
 
-  let present = 0, late = 0, absent = 0;
-  
+  let present = 0, wfh = 0, late = 0, absent = 0, leave = 0;
+
+  const tallyDate = (dateStr) => {
+    const st = resolveAttendance(CURRENT_USER_ID, dateStr).status;
+    if (st === "Present WFH") wfh++;
+    else if (st === "Present") present++;
+    else if (st === "Late") late++;
+    else if (st === "Leave") leave++;
+    else absent++;
+  };
+
   if (state.pieMode === "Month") {
     // Only use days that exist in the database
-    myRecords.forEach(r => {
-      if (r.status === "Absent") {
-        absent++;
-        return;
-      }
-      if (!r.checkIn || r.checkIn === "--:--" || r.checkIn === "12:00 AM") {
-        absent++;
-        return;
-      }
-      
-      // Parse checkIn time to determine Late vs Present
-      let isLate = false;
-      const parsed = parseAMPMTime(r.checkIn);
-      if (parsed) {
-        if (parsed.h > 11 || (parsed.h === 11 && parsed.m > 0)) {
-          isLate = true;
-        }
-      } else if (r.status === "Late") {
-        isLate = true;
-      }
-
-      if (isLate) {
-        late++;
-      } else {
-        // If check in is there then present even if check out is not there
-        present++;
-      }
-    });
+    myRecords.forEach(r => tallyDate(r.date));
   } else {
     // Week mode: last 7 days, but only count records that fall in the last 7 days
     const today = new Date();
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setDate(today.getDate() - 6);
-    
+
     myRecords.forEach(r => {
       const recordDate = new Date(r.date);
-      if (recordDate >= sevenDaysAgo && recordDate <= today) {
-        if (r.status === "Absent" || !r.checkIn || r.checkIn === "--:--" || r.checkIn === "12:00 AM") {
-          absent++;
-        } else {
-          let isLate = false;
-          const parsed = parseAMPMTime(r.checkIn);
-          if (parsed && (parsed.h > 11 || (parsed.h === 11 && parsed.m > 0))) {
-            isLate = true;
-          }
-          if (isLate) late++;
-          else present++;
-        }
-      }
+      if (recordDate >= sevenDaysAgo && recordDate <= today) tallyDate(r.date);
     });
   }
 
-  return { labels: ["Present", "Late", "Absent"], data: [present, late, absent], colors: ["#10b981", "#f59e0b", "#ef4444"] };
+  return {
+    labels: ["Present", "Present WFH", "Late", "Leave", "Absent"],
+    data: [present, wfh, late, leave, absent],
+    colors: ["#10b981", "#6366f1", "#f59e0b", "#64748b", "#ef4444"],
+    presentTotal: present + wfh
+  };
 }
 
 function renderPieChart() {
@@ -492,7 +744,7 @@ function renderPieChart() {
 
   if (state.pieChart) { state.pieChart.destroy(); state.pieChart = null; }
 
-  document.getElementById("pie-center-value").textContent = pd.data[0];
+  document.getElementById("pie-center-value").textContent = pd.presentTotal;
 
   state.pieChart = new Chart(canvas, {
     type: "doughnut",
@@ -530,14 +782,11 @@ function renderPieChart() {
 }
 
 function getHoursData() {
-  const source = (state.monthlyAttendance && state.monthlyAttendance.length > 0)
-    ? state.monthlyAttendance.filter(a => a.employeeId === CURRENT_USER_ID)
-    : state.attendance.filter(a => a.employeeId === CURRENT_USER_ID);
-  
   const data = [];
+  const colors = [];
   const today = new Date();
   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  
+
   // Last 7 days, but capped at the start of the month
   const sevenDaysAgo = new Date(today);
   sevenDaysAgo.setDate(today.getDate() - 6);
@@ -545,28 +794,43 @@ function getHoursData() {
 
   for (let d = new Date(startDate); d <= today; d.setDate(d.getDate() + 1)) {
     const dateStr = iso(d);
-    const record = source.find(a => a.date === dateStr);
-    
-    // Only push to data if the record exists (user requested "how day of data aviable")
-    if (record) {
-      let hours = 0;
-      if (record.overtime !== undefined && record.overtime > 0) {
-        hours = record.overtime;
-      } else if (record.checkIn && record.checkOut && record.checkIn !== "--:--" && record.checkOut !== "--:--" && record.checkIn !== "12:00 AM") {
-        const inH = timeStrToHours(record.checkIn);
-        const outH = timeStrToHours(record.checkOut);
+    const res = resolveAttendance(CURRENT_USER_ID, dateStr);
+
+    let hours = 0;
+    let color = "#3b82f6";
+
+    if (res.status === "Present WFH") {
+      // Purple bar for Work From Home, using the employee-provided times
+      color = "#6366f1";
+      if (res.checkIn && res.checkOut) {
+        const inH = parse24hTime(res.checkIn);
+        const outH = parse24hTime(res.checkOut);
+        if (inH && outH && (outH.h * 60 + outH.m) > (inH.h * 60 + inH.m)) {
+          hours = (outH.h * 60 + outH.m - (inH.h * 60 + inH.m)) / 60;
+        }
+      }
+    } else if (res.record) {
+      const rec = res.record;
+      if (rec.overtime !== undefined && rec.overtime > 0) {
+        hours = rec.overtime;
+      } else if (res.checkIn && res.checkOut && res.checkIn !== "--:--" && res.checkOut !== "--:--" && res.checkIn !== "12:00 AM") {
+        const inH = timeStrToHours(res.checkIn);
+        const outH = timeStrToHours(res.checkOut);
         if (outH > inH) hours = outH - inH;
       }
-      data.push({ date: dateStr.slice(5), hours: Number(hours.toFixed(1)) });
     }
+
+    data.push({ date: dateStr.slice(5), hours: Number(hours.toFixed(1)) });
+    colors.push(color);
   }
-  
+
   // If no data exists at all, just provide a dummy empty state so the chart doesn't crash
   if (data.length === 0) {
     data.push({ date: iso(today).slice(5), hours: 0 });
+    colors.push("#3b82f6");
   }
-  
-  return data;
+
+  return { data, colors };
 }
 
 function renderHoursChart() {
@@ -576,30 +840,31 @@ function renderHoursChart() {
 
   if (state.hoursChart) { state.hoursChart.destroy(); state.hoursChart = null; }
 
-  const ct = state.chartType;
+  const isBar = state.chartType !== "Line";
+
   const config = {
-    type: ct === "Bar" ? "bar" : "line",
+    type: isBar ? "bar" : "line",
     data: {
-      labels: hd.map(d => d.date),
+      labels: hd.data.map(d => d.date),
       datasets: [{
         label: "hours",
-        data: hd.map(d => d.hours),
-        backgroundColor: ct === "Area" ? "rgba(59,130,246,0.15)" : "#3b82f6",
-        borderColor: "#3b82f6",
-        borderWidth: ct === "Bar" ? 0 : 3,
-        fill: ct === "Area",
-        tension: ct === "Line" ? 0.4 : 0.3,
-        pointRadius: ct === "Line" ? 4 : ct === "Area" ? 0 : 0,
+        data: hd.data.map(d => d.hours),
+        backgroundColor: hd.colors,
+        borderColor: hd.colors,
+        borderWidth: isBar ? 0 : 2,
+        fill: isBar ? false : true,
         pointBackgroundColor: "#fff",
-        pointBorderColor: "#3b82f6",
+        pointBorderColor: hd.colors,
         pointBorderWidth: 2,
-        borderRadius: ct === "Bar" ? 6 : 0,
-        barPercentage: 0.5,
+        borderRadius: 6,
+        barPercentage: 0.9,
+        categoryPercentage: 0.9,
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      indexAxis: isBar ? "y" : "x",
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -630,27 +895,30 @@ function renderTodayCheckinStatus() {
   if (!el) return;
 
   const todayStr = iso(new Date());
-  const source = (state.monthlyAttendance && state.monthlyAttendance.length > 0)
-    ? state.monthlyAttendance
-    : state.attendance;
+  const res = resolveAttendance(CURRENT_USER_ID, todayStr);
+  const todayRecord = res.record;
 
-  const todayRecord = source.find(
-    a => a.employeeId === CURRENT_USER_ID && a.date === todayStr
-  );
+  console.log('[DEBUG] renderTodayCheckinStatus:', { todayStr, CURRENT_USER_ID, found: !!todayRecord, status: res.status });
 
-  console.log('[DEBUG] renderTodayCheckinStatus:', { todayStr, CURRENT_USER_ID, found: !!todayRecord, punches: todayRecord?.punches, sourceLen: source.length });
+  if (res.status === "Present WFH") {
+    el.innerHTML = `
+      <div style="font-size:1rem;font-weight:600;color:#6366f1;margin-bottom:0.75rem">Present WFH Today 🏠</div>
+      <p class="sub" style="margin-top:0.5rem;font-size:0.8125rem;line-height:1.5;color:var(--muted-foreground)">
+        You have an approved Work From Home request for today.
+      </p>`;
+    return;
+  }
 
-  const hasCheckedIn = todayRecord &&
-    todayRecord.checkIn &&
-    todayRecord.checkIn !== "--:--" &&
-    todayRecord.checkIn !== "12:00 AM" &&
-    todayRecord.status !== "Absent";
+  const hasCheckedIn = res.checkIn &&
+    res.checkIn !== "--:--" &&
+    res.checkIn !== "12:00 AM" &&
+    res.status !== "Absent";
 
   if (hasCheckedIn) {
     let sessionsHTML = "";
-    if (todayRecord.punches && todayRecord.punches.length > 0) {
-      sessionsHTML = todayRecord.punches.map((p, i) => `
-        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:${i < todayRecord.punches.length - 1 ? '1px solid #f3f4f6' : 'none'}">
+    if (res.punches && res.punches.length > 0) {
+      sessionsHTML = res.punches.map((p, i) => `
+        <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:${i < res.punches.length - 1 ? '1px solid #f3f4f6' : 'none'}">
           <span style="font-weight:500;min-width:4.5rem;font-size:0.8125rem;color:#374151">Session ${i + 1}:</span>
           <span style="color:var(--muted-foreground);font-size:0.8125rem">${formatPunchTime(p.in)} → ${formatPunchTime(p.out)}</span>
         </div>
@@ -662,12 +930,12 @@ function renderTodayCheckinStatus() {
       <div class="punch-details" style="background:#f9fafb;border-radius:0.5rem;padding:0.75rem">
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #e5e7eb">
           <span style="font-weight:600;font-size:0.8125rem;color:#374151">Check-in:</span>
-          <span style="font-size:0.875rem;color:#059669;font-weight:700">${todayRecord.checkIn}</span>
+          <span style="font-size:0.875rem;color:#059669;font-weight:700">${res.checkIn}</span>
         </div>
         ${sessionsHTML}
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-top:1px solid #e5e7eb">
           <span style="font-weight:600;font-size:0.8125rem;color:#374151">Check-out:</span>
-          <span style="font-size:0.875rem;color:#dc2626;font-weight:700">${todayRecord.checkOut}</span>
+          <span style="font-size:0.875rem;color:#dc2626;font-weight:700">${res.checkOut}</span>
         </div>
       </div>
     `;
@@ -857,9 +1125,32 @@ function openEmployeeModal(empId) {
 function renderAttendanceAdmin() {
   const todayStr = iso(new Date());
   const todayAll = state.attendance.filter(a => a.date === todayStr);
-  const present = todayAll.filter(a => a.status && a.status !== "Absent").length;
-  const onTime = todayAll.filter(a => a.status === "Present").length;
-  const late = todayAll.filter(a => a.status === "Late").length;
+
+  // Build a display set: scraped records + employees with an approved WFH
+  // today that have no scraped record (so HR sees them as Present WFH too).
+  const displayMap = {};
+  todayAll.forEach(a => { displayMap[a.employeeId] = a; });
+  (state.wfhRequests || []).forEach(w => {
+    if (w.status !== "Approved") return;
+    const from = new Date(w.from), to = new Date(w.to), t = new Date(todayStr);
+    if (t >= from && t <= to && !displayMap[w.employeeId]) {
+      displayMap[w.employeeId] = {
+        employeeId: w.employeeId,
+        checkIn: w.fromTime || "—",
+        checkOut: w.toTime || "—",
+        punches: [],
+        wfhOnly: true
+      };
+    }
+  });
+  const displayRows = Object.values(displayMap);
+
+  const present = displayRows.filter(a => {
+    const st = resolveAttendance(a.employeeId, todayStr).status;
+    return st !== "Absent";
+  }).length;
+  const onTime = displayRows.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Present").length;
+  const late = displayRows.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Late").length;
   const withData = new Set(state.attendance.map(a => a.employeeId)).size;
   const totalStaff = withData || employees.length;
 
@@ -869,9 +1160,10 @@ function renderAttendanceAdmin() {
     statCardHTML("Late Arrivals", late, null, "chart3");
 
   const tbody = document.getElementById("att-admin-table-body");
-  if (todayAll.length) {
-    tbody.innerHTML = todayAll.map(a => {
+  if (displayRows.length) {
+    tbody.innerHTML = displayRows.map(a => {
       const emp = getEmployee(a.employeeId);
+      const res = resolveAttendance(a.employeeId, todayStr);
       let sessionsHTML = "";
       if (a.punches && a.punches.length > 0) {
         sessionsHTML = a.punches.map((p, i) =>
@@ -892,7 +1184,7 @@ function renderAttendanceAdmin() {
         <td><span style="font-weight:500">${a.checkIn ?? "—"}</span></td>
         <td>${sessionsHTML}</td>
         <td><span style="font-weight:500">${a.checkOut ?? "—"}</span></td>
-        <td>${badgeHTML(a.status)}</td>
+        <td>${badgeHTML(res.status)}</td>
       </tr>`;
     }).join("");
   } else {
@@ -950,17 +1242,27 @@ function renderAttendanceEmployee() {
     const dayName = days[i];
     const dateNum = d.getDate();
 
-    let record = state.last6Months.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    if (!record) {
-      record = state.attendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    }
-    if (!record && state.monthlyAttendance) {
-      record = state.monthlyAttendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    }
+    const res = resolveAttendance(CURRENT_USER_ID, dateStr);
+    const record = res.record;
 
     let status = "gray", statusLabel = "No data", endDotClass = "gray", checkInStr = "", checkOutStr = "";
 
-    if (record) {
+    if (res.status === "Present WFH") {
+      status = "wfh";
+      statusLabel = "Present WFH";
+      const ci = res.checkIn, co = res.checkOut;
+      const hasCI = ci && ci !== "--:--" && ci !== "12:00 AM" && ci !== "Invalid Date";
+      const hasCO = co && co !== "--:--" && co !== "12:00 AM" && co !== "Invalid Date";
+      checkInStr = hasCI ? ci : "—";
+      checkOutStr = hasCO ? co : "—";
+      endDotClass = "wfh";
+    } else if (res.status === "Leave") {
+      status = "leave";
+      statusLabel = "Leave";
+      checkInStr = "—";
+      checkOutStr = "—";
+      endDotClass = "leave";
+    } else if (record) {
       const ci = record.checkIn;
       const co = record.checkOut;
       const hasCI = ci && ci !== "--:--" && ci !== "12:00 AM" && ci !== "Invalid Date";
@@ -1041,6 +1343,35 @@ function renderAttendanceEmployee() {
   renderSundayLeaveInfo();
 }
 
+/* Render the per-month Table view in the employee attendance section.
+   Uses the same month offset (calMonthOffset) as the calendar view so it
+   always reflects "all month detail" for the currently selected month. */
+function renderAttendanceTable() {
+  const tbody = document.getElementById("att-table-body");
+  if (!tbody) return;
+
+  const now = new Date();
+  const offset = state.calMonthOffset || 0;
+  const year = now.getFullYear();
+  const month = now.getMonth() + offset;
+
+  const stats = computeMonthStats(window.CURRENT_USER_ID, year, month);
+  tbody.innerHTML = dayRecordsTableHTML(stats.records);
+
+  const headerEl = document.getElementById("att-table-header");
+  if (headerEl) {
+    headerEl.textContent = `Attendance — ${MONTH_NAMES[month]} ${year}`;
+  }
+  const summaryEl = document.getElementById("att-table-summary");
+  if (summaryEl) {
+    summaryEl.innerHTML = `
+      <span class="dot" style="background:#10b981"></span>Present <b>${stats.present}</b>
+      <span class="dot" style="background:#f59e0b"></span>Late <b>${stats.late}</b>
+      <span class="dot" style="background:#ef4444"></span>Absent <b>${stats.absent}</b>
+      · ${stats.totalHours}h total`;
+  }
+}
+
 function renderSundayLeaveInfo() {
   const el = document.getElementById("sunday-leave-info");
   if (!el) return;
@@ -1059,22 +1390,11 @@ function renderSundayLeaveInfo() {
   const totalSundays = sundayDates.length;
   if (totalSundays === 0) { el.style.display = "none"; return; }
 
-  const sources = [...(state.attendance || []), ...(state.monthlyAttendance || []), ...(state.last6Months || [])]
-    .filter(a => a.employeeId === CURRENT_USER_ID);
-
+  // A Sunday counts as "used" only when an approved leave request covers it.
+  // WFH / Present Sundays must NOT consume the Sunday-leave allowance.
   const used = new Set();
   sundayDates.forEach(sd => {
-    if (sources.some(a => a.date === sd)) used.add(sd);
-  });
-
-  // Also count approved leave requests that fall on a Sunday this month
-  (state.leaveRequests || []).forEach(l => {
-    if (l.employeeId !== CURRENT_USER_ID || l.status !== "Approved") return;
-    const from = new Date(l.from), to = new Date(l.to);
-    sundayDates.forEach(sd => {
-      const dt = new Date(sd);
-      if (dt >= from && dt <= to) used.add(sd);
-    });
+    if (getSundayLeaveForDate(CURRENT_USER_ID, sd)) used.add(sd);
   });
 
   const MAX_SUNDAY_LEAVE = 2;
@@ -1112,7 +1432,7 @@ function renderAttendanceCalendar() {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0, leaveCount = 0;
 
   let calHTML = `
     <div class="att-cal-day-header">Sun</div>
@@ -1136,11 +1456,22 @@ function renderAttendanceCalendar() {
 
     let statusClass = "", statusText = "", checkInStr = "", checkOutStr = "";
 
-    let record = state.last6Months.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    if (!record) record = state.attendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
-    if (!record && state.monthlyAttendance) record = state.monthlyAttendance.find(a => a.employeeId === CURRENT_USER_ID && a.date === dateStr);
+    const res = resolveAttendance(CURRENT_USER_ID, dateStr);
+    const record = res.record;
 
-    if (record) {
+    if (res.status === "Present WFH") {
+      statusClass = "wfh";
+      statusText = "Present WFH";
+      const hasCI = res.checkIn && res.checkIn !== "--:--" && res.checkIn !== "12:00 AM" && res.checkIn !== "Invalid Date";
+      const hasCO = res.checkOut && res.checkOut !== "--:--" && res.checkOut !== "12:00 AM" && res.checkOut !== "Invalid Date";
+      checkInStr = hasCI ? res.checkIn : "";
+      checkOutStr = hasCO ? res.checkOut : "";
+      presentCount++;
+    } else if (res.status === "Leave") {
+      statusClass = "leave";
+      statusText = "Leave";
+      leaveCount++;
+    } else if (record) {
       const hasCI = record.checkIn && record.checkIn !== "--:--" && record.checkIn !== "12:00 AM" && record.checkIn !== "Invalid Date";
       const hasCO = record.checkOut && record.checkOut !== "--:--" && record.checkOut !== "12:00 AM" && record.checkOut !== "Invalid Date";
       if (hasCI || hasCO) {
@@ -1182,11 +1513,12 @@ function renderAttendanceCalendar() {
   // Monthly summary
   const summaryEl = document.getElementById("att-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount + leaveCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount + leaveCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
+      <span class="att-cal-stat"><span class="dot" style="background:#64748b"></span>Leave <b>${leaveCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>
     `;
@@ -1214,16 +1546,19 @@ async function loadLeaveRequests() {
 }
 
 function renderLeaveAdmin() {
-  const pending = state.leaveRequests.filter(l => l.status === "Pending");
-  const approved = state.leaveRequests.filter(l => l.status === "Approved").length;
-  const rejected = state.leaveRequests.filter(l => l.status === "Rejected").length;
+  const visible = state.leaveRequests;
+  const pending = visible.filter(l => l.status === "Pending");
+  const approved = visible.filter(l => l.status === "Approved").length;
+  const rejected = visible.filter(l => l.status === "Rejected").length;
+  const processed = visible.filter(l => l.status !== "Pending");
+  const recent = processed.slice(0, 5);
 
   document.getElementById("leave-admin-stats").innerHTML =
     statCardHTML("Pending Requests", pending.length, null, "chart3") +
     statCardHTML("Approved", approved, null, "chart5") +
     statCardHTML("Rejected", rejected, null, "primary");
 
-  document.getElementById("leave-admin-pending").innerHTML = pending.map(l => {
+  const leaveRowHTML = (l, withActions) => {
     const emp = getEmployee(l.employeeId);
     return `<div class="list-row">
       ${avatarHTML(emp.name)}
@@ -1231,10 +1566,21 @@ function renderLeaveAdmin() {
         <div class="title">${escapeHtml(emp.name)} — ${escapeHtml(l.type)} Leave</div>
         <div class="sub">${formatDate(l.from)} to ${formatDate(l.to)} · ${l.days} days · ${escapeHtml(l.reason)}</div>
       </div>
-      <button class="btn primary sm" onclick="setLeaveStatus('${l.id}','Approved')">Approve</button>
-      <button class="btn outline sm" onclick="setLeaveStatus('${l.id}','Rejected')">Reject</button>
+      ${withActions ? `
+        <button class="btn primary sm" onclick="setLeaveStatus('${l.id}','Approved')">Approve</button>
+        <button class="btn outline sm" onclick="setLeaveStatus('${l.id}','Rejected')">Reject</button>` : `
+        ${badgeHTML(l.status)}
+        ${l.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(l.reviewerNote)}</span>` : ""}`}
     </div>`;
-  }).join("");
+  };
+
+  document.getElementById("leave-admin-pending").innerHTML = pending.length
+    ? pending.map(l => leaveRowHTML(l, true)).join("")
+    : `<p class="empty-state">No pending requests.</p>`;
+
+  document.getElementById("leave-admin-recent").innerHTML = recent.length
+    ? recent.map(l => leaveRowHTML(l, false)).join("")
+    : `<p class="empty-state">No recently processed requests.</p>`;
 }
 
 async function setLeaveStatus(id, status) {
@@ -1259,7 +1605,6 @@ function renderLeaveEmployee() {
   const approvedDays = myLeaves.filter(l => l.status === "Approved").reduce((s, l) => s + l.days, 0);
 
   document.getElementById("leave-emp-stats").innerHTML =
-    statCardHTML("Leave Balance", 18 - approvedDays, "of 18 days", "chart5") +
     statCardHTML("Used", approvedDays, "Approved this year") +
     statCardHTML("Pending", myLeaves.filter(l => l.status === "Pending").length, null, "chart3");
 
@@ -1277,12 +1622,20 @@ function renderLeaveEmployee() {
   `).join("");
 }
 
+function leaveFormError(msg) {
+  const errEl = document.getElementById("leave-form-error");
+  if (!errEl) return;
+  errEl.textContent = msg;
+  errEl.style.display = "block";
+}
+
 async function submitLeave() {
   const type = document.getElementById("leave-type").value;
   const from = document.getElementById("leave-from").value;
   const to = document.getElementById("leave-to").value;
   const reason = document.getElementById("leave-reason").value;
-  if (!from || !to) return;
+  if (!from || !to) { leaveFormError("Please select both From and To dates."); return; }
+  if (new Date(to) < new Date(from)) { leaveFormError("To date cannot be earlier than the From date."); return; }
   const days = Math.max(1, Math.ceil((new Date(to) - new Date(from)) / 86400000) + 1);
   try {
     await API.createLeaveRequest(CURRENT_USER_ID, type, from, to, days, reason);
@@ -1290,6 +1643,8 @@ async function submitLeave() {
     document.getElementById("leave-from").value = "";
     document.getElementById("leave-to").value = "";
     document.getElementById("leave-reason").value = "";
+    const errEl = document.getElementById("leave-form-error");
+    if (errEl) errEl.style.display = "none";
     showToast("Leave request submitted!");
     await loadLeaveRequests();
     renderLeaveEmployee();
@@ -1298,15 +1653,168 @@ async function submitLeave() {
   }
 }
 
-/* ---------- Onboarding (Supabase) ---------- */
-function mapOnboardingRow(r) {
+/* ---------- Work From Home (Supabase) ---------- */
+function wfhDaysBetween(from, to) {
+  const f = new Date(from), t = new Date(to);
+  return Math.max(1, Math.ceil((t - f) / 86400000) + 1);
+}
+
+async function loadWfhRequests() {
+  const data = await API.fetchWfhRequests(
+    state.role === "admin" ? null : window.CURRENT_USER_ID
+  );
+  state.wfhRequests = data.map(r => ({
+    id: r.id,
+    employeeId: r.employee_id,
+    from: r.from_date,
+    to: r.to_date,
+    fromTime: r.from_time || "",
+    toTime: r.to_time || "",
+    days: wfhDaysBetween(r.from_date, r.to_date),
+    reason: r.reason || "",
+    status: r.status,
+    reviewerNote: r.reviewer_note || "",
+    reviewedBy: r.reviewed_by || "",
+    appliedOn: r.applied_on
+  }));
+}
+
+function renderWfhEmployee() {
+  const my = state.wfhRequests.filter(w => w.employeeId === CURRENT_USER_ID);
+  const pending = my.filter(w => w.status === "Pending").length;
+  const approved = my.filter(w => w.status === "Approved").length;
+  const rejected = my.filter(w => w.status === "Rejected").length;
+
+  const statsEl = document.getElementById("wfh-emp-stats");
+  if (statsEl) statsEl.innerHTML =
+    statCardHTML("Pending", pending, null, "chart3") +
+    statCardHTML("Approved", approved, null, "chart5") +
+    statCardHTML("Rejected", rejected, null, "primary");
+
+  const listEl = document.getElementById("wfh-emp-requests");
+  if (listEl) {
+    listEl.innerHTML = my.map(w => {
+      const timeStr = (w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : "";
+      return `<div class="list-row">
+        <div class="list-row-info">
+          <div class="title">Work From Home</div>
+          <div class="sub">${formatDate(w.from)} – ${formatDate(w.to)} · ${w.days}d${timeStr}</div>
+        </div>
+        <div class="leave-request-status">
+          ${badgeHTML(w.status)}
+          ${w.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(w.reviewerNote)}</span>` : ""}
+        </div>
+      </div>`;
+    }).join("");
+  }
+}
+
+function renderWfhAdmin() {
+  const visible = state.wfhRequests;
+  const pending = visible.filter(w => w.status === "Pending");
+  const approved = visible.filter(w => w.status === "Approved").length;
+  const rejected = visible.filter(w => w.status === "Rejected").length;
+  const processed = visible.filter(w => w.status !== "Pending");
+  const recent = processed.slice(0, 5);
+
+  const statsEl = document.getElementById("wfh-admin-stats");
+  if (statsEl) statsEl.innerHTML =
+    statCardHTML("Pending Requests", pending.length, null, "chart3") +
+    statCardHTML("Approved", approved, null, "chart5") +
+    statCardHTML("Rejected", rejected, null, "primary");
+
+  const wfhRowHTML = (w, withActions) => {
+    const emp = getEmployee(w.employeeId);
+    const timeStr = (w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : "";
+    return `<div class="list-row">
+      ${avatarHTML(emp.name)}
+      <div class="list-row-info">
+        <div class="title">${escapeHtml(emp.name)} — Work From Home</div>
+        <div class="sub">${formatDate(w.from)} to ${formatDate(w.to)} · ${w.days} days · ${escapeHtml(w.reason)}${timeStr}</div>
+      </div>
+      ${withActions ? `
+        <button class="btn primary sm" onclick="setWfhStatus('${w.id}','Approved')">Approve</button>
+        <button class="btn outline sm" onclick="setWfhStatus('${w.id}','Rejected')">Reject</button>` : `
+        ${badgeHTML(w.status)}
+        ${w.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(w.reviewerNote)}</span>` : ""}`}
+    </div>`;
+  };
+
+  const pendEl = document.getElementById("wfh-admin-pending");
+  if (pendEl) pendEl.innerHTML = pending.length
+    ? pending.map(w => wfhRowHTML(w, true)).join("")
+    : `<p class="empty-state">No pending requests.</p>`;
+
+  const recentEl = document.getElementById("wfh-admin-recent");
+  if (recentEl) recentEl.innerHTML = recent.length
+    ? recent.map(w => wfhRowHTML(w, false)).join("")
+    : `<p class="empty-state">No recently processed requests.</p>`;
+}
+
+async function setWfhStatus(id, status) {
+  let reviewerNote = "";
+  if (status === "Rejected") {
+    reviewerNote = prompt("Reason for rejection:");
+    if (reviewerNote === null) return;
+  }
+  try {
+    const hrName = document.getElementById('user-name')?.textContent || 'HR';
+    await API.updateWfhStatus(parseInt(id), status, reviewerNote, hrName);
+    showToast(`WFH ${status.toLowerCase()}`);
+    await loadWfhRequests();
+    renderWfhAdmin();
+    // Reflect the override in any visible attendance view
+    if (state.page === "attendance") renderAttendanceAdmin();
+  } catch (err) {
+    showToast("Failed to update WFH status");
+  }
+}
+
+function wfhFormError(msg) {
+  const errEl = document.getElementById("wfh-form-error");
+  if (!errEl) return;
+  errEl.textContent = msg;
+  errEl.style.display = "block";
+}
+
+async function submitWfh() {
+  const from = document.getElementById("wfh-from").value;
+  const to = document.getElementById("wfh-to").value;
+  const fromTime = document.getElementById("wfh-from-time").value;
+  const toTime = document.getElementById("wfh-to-time").value;
+  const reason = document.getElementById("wfh-reason").value;
+  if (!from || !to) { wfhFormError("Please select both From and To dates."); return; }
+  if (new Date(to) < new Date(from)) { wfhFormError("To date cannot be earlier than the From date."); return; }
+  try {
+    await API.createWfhRequest(CURRENT_USER_ID, from, to, fromTime, toTime, reason);
+    document.getElementById("wfh-from").value = "";
+    document.getElementById("wfh-to").value = "";
+    document.getElementById("wfh-from-time").value = "";
+    document.getElementById("wfh-to-time").value = "";
+    document.getElementById("wfh-reason").value = "";
+    const errEl = document.getElementById("wfh-form-error");
+    if (errEl) errEl.style.display = "none";
+    showToast("WFH request submitted!");
+    await loadWfhRequests();
+    renderWfhEmployee();
+  } catch (err) {
+    showToast("Failed to submit WFH request");
+  }
+}
+
+/* ---------- Travel Allowance (Supabase) ---------- */
+function mapTravelAllowanceRow(r) {
+  const distanceKm = r.travel_distance_km != null ? Number(r.travel_distance_km) : 0;
+  const rate = state.reimbursementRate || 0;
   return {
     id: r.id.toString(),
     employeeId: r.employee_id,
     requestDate: r.request_date,
     fromLocation: r.from_location || "",
     destination: r.destination || "",
-    travelCost: r.travel_cost != null ? Number(r.travel_cost) : 0,
+    distanceKm,
+    travelCost: distanceKm,
+    reimbursement: Math.round(distanceKm * rate * 100) / 100,
     purpose: r.purpose || "",
     additionalDetails: r.additional_details || "",
     status: r.status,
@@ -1317,189 +1825,244 @@ function mapOnboardingRow(r) {
   };
 }
 
-async function loadOnboardingRequests() {
-  const data = await API.fetchOnboardingRequests(
+async function loadTravelAllowanceRequests() {
+  await loadReimbursementRate();
+  const data = await API.fetchTravelAllowanceRequests(
     state.role === "admin" ? null : window.CURRENT_USER_ID
   );
-  state.onboardingRequests = data.map(mapOnboardingRow);
+  state.travelRequests = data.map(mapTravelAllowanceRow);
 }
 
-function renderOnboardingAdmin() {
-  const all = state.onboardingRequests;
+async function loadReimbursementRate() {
+  try {
+    const { data, error } = await supabaseClient
+      .from("app_meta")
+      .select("value")
+      .eq("key", "reimbursement_rate_per_km")
+      .maybeSingle();
+    if (error) throw error;
+    state.reimbursementRate = data && data.value != null ? parseFloat(data.value) : 0;
+  } catch (e) {
+    console.warn("Could not load reimbursement rate", e);
+    state.reimbursementRate = 0;
+  }
+}
+
+async function saveReimbursementRate(rate) {
+  const { error } = await supabaseClient
+    .from("app_meta")
+    .upsert({ key: "reimbursement_rate_per_km", value: String(rate) }, { onConflict: "key" });
+  if (error) throw error;
+  state.reimbursementRate = rate;
+}
+
+function renderTravelAllowanceAdmin() {
+  const all = state.travelRequests;
   const pending = all.filter(r => r.status === "Pending");
   const approved = all.filter(r => r.status === "Approved").length;
   const rejected = all.filter(r => r.status === "Rejected").length;
 
-  document.getElementById("onboarding-admin-stats").innerHTML =
+  document.getElementById("travel-admin-stats").innerHTML =
     statCardHTML("Pending Requests", pending.length, null, "chart3") +
     statCardHTML("Approved", approved, null, "chart5") +
     statCardHTML("Rejected", rejected, null, "primary");
 
-  // Employee filter (history per employee)
-  const filter = document.getElementById("onboarding-emp-filter");
+  // Employee filter (applies to all sections)
+  const filter = document.getElementById("travel-emp-filter");
   if (filter) {
     const empIds = [...new Set(all.map(r => r.employeeId))].sort();
-    const current = state.onboardingFilterEmp;
+    const current = state.travelFilterEmp;
     filter.innerHTML = `<option value="all">All Employees</option>` +
       empIds.map(id => {
         const emp = getEmployee(id);
         return `<option value="${id}" ${current === id ? "selected" : ""}>${emp.name} (${id})</option>`;
       }).join("");
     filter.onchange = () => {
-      state.onboardingFilterEmp = filter.value;
-      renderOnboardingAdmin();
+      state.travelFilterEmp = filter.value;
+      renderTravelAllowanceAdmin();
     };
   }
 
-  const filtered = state.onboardingFilterEmp === "all"
+  const filtered = state.travelFilterEmp === "all"
     ? all
-    : all.filter(r => r.employeeId === state.onboardingFilterEmp);
+    : all.filter(r => r.employeeId === state.travelFilterEmp);
 
-  const listEl = document.getElementById("onboarding-admin-list");
-  if (!listEl) return;
+  const processed = filtered.filter(r => r.status !== "Pending");
+  const recent = processed.slice(0, 5);
 
-  if (filtered.length === 0) {
-    listEl.innerHTML = `<p class="empty-state">No onboarding requests${state.onboardingFilterEmp !== "all" ? " for this employee" : ""}.</p>`;
-    return;
-  }
-
-  listEl.innerHTML = filtered.map(r => {
+  const travelRowHTML = (r, withActions) => {
     const emp = getEmployee(r.employeeId);
     return `<div class="list-row">
       ${avatarHTML(emp.name)}
       <div class="list-row-info">
         <div class="title">${escapeHtml(emp.name)} — ${escapeHtml(r.destination)}</div>
-        <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)} · ₹${r.travelCost.toLocaleString()}</div>
+        <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)} · ${r.distanceKm} km · ₹${r.reimbursement.toLocaleString()}</div>
       </div>
-      ${badgeHTML(r.status)}
-      <button class="btn outline sm" onclick="openOnboardingDetail('${r.id}')">View</button>
+      ${withActions
+        ? `<button class="btn outline sm" onclick="openTravelAllowanceDetail('${r.id}')">View</button>`
+        : `${badgeHTML(r.status)}
+           ${r.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(r.reviewerNote)}</span>` : ""}`}
     </div>`;
-  }).join("");
+  };
+
+  const pendEl = document.getElementById("travel-admin-pending");
+  if (pendEl) pendEl.innerHTML = pending.length
+    ? pending.map(r => travelRowHTML(r, true)).join("")
+    : `<p class="empty-state">No pending requests${state.travelFilterEmp !== "all" ? " for this employee" : ""}.</p>`;
+
+  const recentEl = document.getElementById("travel-admin-recent");
+  if (recentEl) recentEl.innerHTML = recent.length
+    ? recent.map(r => travelRowHTML(r, false)).join("")
+    : `<p class="empty-state">No recently processed requests.</p>`;
 }
 
-function renderOnboardingEmployee() {
-  const dateEl = document.getElementById("onb-date");
+function renderTravelAllowanceEmployee() {
+  const dateEl = document.getElementById("ta-date");
   if (dateEl && !dateEl.value) dateEl.value = iso(new Date());
 
-  const mine = state.onboardingRequests;
+  const mine = state.travelRequests;
   const pending = mine.filter(r => r.status === "Pending").length;
   const approved = mine.filter(r => r.status === "Approved").length;
   const rejected = mine.filter(r => r.status === "Rejected").length;
 
-  document.getElementById("onboarding-emp-stats").innerHTML =
+  document.getElementById("travel-emp-stats").innerHTML =
     statCardHTML("Total Requests", mine.length, null, "chart5") +
     statCardHTML("Pending", pending, null, "chart3") +
     statCardHTML("Approved", approved, "Rejected: " + rejected, "primary");
 
-  const listEl = document.getElementById("onboarding-emp-requests");
+  const listEl = document.getElementById("travel-emp-requests");
   if (!listEl) return;
 
   if (mine.length === 0) {
-    listEl.innerHTML = `<p class="empty-state">No onboarding requests submitted yet.</p>`;
+    listEl.innerHTML = `<p class="empty-state">No travel allowance requests submitted yet.</p>`;
     return;
   }
 
   listEl.innerHTML = mine.map(r => `
-    <div class="onb-request-card">
-      <div class="onb-request-head">
+    <div class="ta-request-card">
+      <div class="ta-request-head">
         <div class="title">${escapeHtml(r.destination)}</div>
         ${badgeHTML(r.status)}
       </div>
       <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)}</div>
-      <div class="onb-req-meta"><strong>Purpose:</strong> ${escapeHtml(r.purpose)}</div>
-      <div class="onb-req-meta"><strong>Travel/Expense Cost:</strong> ₹${r.travelCost.toLocaleString()}</div>
-      ${r.additionalDetails ? `<div class="onb-req-meta"><strong>Details:</strong> ${escapeHtml(r.additionalDetails)}</div>` : ""}
-      ${r.reviewerNote ? `<div class="onb-reviewer-note"><strong>HR remark:</strong> ${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div>` : ""}
+      <div class="ta-req-meta"><strong>Purpose:</strong> ${escapeHtml(r.purpose)}</div>
+      <div class="ta-req-meta"><strong>Distance:</strong> ${r.distanceKm} km</div>
+      <div class="ta-req-meta"><strong>Reimbursement:</strong> ₹${r.reimbursement.toLocaleString()}</div>
+      ${r.additionalDetails ? `<div class="ta-req-meta"><strong>Details:</strong> ${escapeHtml(r.additionalDetails)}</div>` : ""}
+      ${r.reviewerNote ? `<div class="ta-reviewer-note"><strong>HR remark:</strong> ${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div>` : ""}
     </div>
   `).join("");
 }
 
-async function openOnboardingDetail(id) {
-  const r = state.onboardingRequests.find(x => x.id === id);
+async function openTravelAllowanceDetail(id) {
+  const r = state.travelRequests.find(x => x.id === id);
   if (!r) return;
   const emp = getEmployee(r.employeeId);
 
-  const modal = document.getElementById("onboarding-detail-modal");
+  const modal = document.getElementById("travel-detail-modal");
   if (!modal) return;
 
-  document.getElementById("onb-modal-title").textContent = `${emp.name} — ${r.destination}`;
-  document.getElementById("onb-modal-body").innerHTML = `
-    <div class="onb-detail-grid">
-      <div><span class="onb-detail-label">Employee</span><span class="onb-detail-value">${escapeHtml(emp.name)} (${escapeHtml(r.employeeId)})</span></div>
-      <div><span class="onb-detail-label">Date</span><span class="onb-detail-value">${formatDate(r.requestDate)}</span></div>
-      <div><span class="onb-detail-label">From</span><span class="onb-detail-value">${escapeHtml(r.fromLocation)}</span></div>
-      <div><span class="onb-detail-label">Destination</span><span class="onb-detail-value">${escapeHtml(r.destination)}</span></div>
-      <div><span class="onb-detail-label">Travel / Expense Cost</span><span class="onb-detail-value">₹${r.travelCost.toLocaleString()}</span></div>
-      <div><span class="onb-detail-label">Status</span><span class="onb-detail-value">${badgeHTML(r.status)}</span></div>
+  document.getElementById("ta-modal-title").textContent = `${emp.name} — ${r.destination}`;
+  document.getElementById("ta-modal-body").innerHTML = `
+    <div class="ta-detail-grid">
+      <div><span class="ta-detail-label">Employee</span><span class="ta-detail-value">${escapeHtml(emp.name)} (${escapeHtml(r.employeeId)})</span></div>
+      <div><span class="ta-detail-label">Date</span><span class="ta-detail-value">${formatDate(r.requestDate)}</span></div>
+      <div><span class="ta-detail-label">From</span><span class="ta-detail-value">${escapeHtml(r.fromLocation)}</span></div>
+      <div><span class="ta-detail-label">Destination</span><span class="ta-detail-value">${escapeHtml(r.destination)}</span></div>
+      <div><span class="ta-detail-label">Distance (km)</span><span class="ta-detail-value">${r.distanceKm} km</span></div>
+      <div class="ta-rate-edit">
+        <span class="ta-detail-label">Rate (₹ / km)</span>
+        <input class="input" id="ta-rate-input" type="number" min="0" step="0.01" value="${(state.reimbursementRate || 0)}" style="max-width:160px" />
+      </div>
+      <div><span class="ta-detail-label">Total Reimbursement</span><span class="ta-detail-value" id="ta-total-value">₹${((r.distanceKm || 0) * (state.reimbursementRate || 0)).toLocaleString()}</span></div>
+      <div><span class="ta-detail-label">Status</span><span class="ta-detail-value">${badgeHTML(r.status)}</span></div>
     </div>
-    <div class="onb-detail-block"><span class="onb-detail-label">Purpose / About</span><div class="onb-detail-value">${escapeHtml(r.purpose)}</div></div>
-    ${r.additionalDetails ? `<div class="onb-detail-block"><span class="onb-detail-label">Additional Details</span><div class="onb-detail-value">${escapeHtml(r.additionalDetails)}</div></div>` : ""}
-    ${r.reviewerNote ? `<div class="onb-detail-block"><span class="onb-detail-label">HR Remark</span><div class="onb-detail-value">${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div></div>` : ""}
-    <div class="onb-detail-block">
-      <span class="onb-detail-label">Reviewer Comment (optional)</span>
-      <textarea class="input" id="onb-review-note" rows="2" placeholder="Add a comment for the employee...">${escapeHtml(r.reviewerNote || "")}</textarea>
+    <div class="ta-detail-block"><span class="ta-detail-label">Purpose / About</span><div class="ta-detail-value">${escapeHtml(r.purpose)}</div></div>
+    ${r.additionalDetails ? `<div class="ta-detail-block"><span class="ta-detail-label">Additional Details</span><div class="ta-detail-value">${escapeHtml(r.additionalDetails)}</div></div>` : ""}
+    ${r.reviewerNote ? `<div class="ta-detail-block"><span class="ta-detail-label">HR Remark</span><div class="ta-detail-value">${escapeHtml(r.reviewerNote)}${r.reviewedBy ? ` (${escapeHtml(r.reviewedBy)})` : ""}</div></div>` : ""}
+    <div class="ta-detail-block">
+      <span class="ta-detail-label">Reviewer Comment (optional)</span>
+      <textarea class="input" id="ta-review-note" rows="2" placeholder="Add a comment for the employee...">${escapeHtml(r.reviewerNote || "")}</textarea>
     </div>
   `;
 
-  const actions = document.getElementById("onb-modal-actions");
+  const actions = document.getElementById("ta-modal-actions");
+
+  // HR sets the ₹/km rate here; total = distance × rate updates live
+  const rateInput = document.getElementById("ta-rate-input");
+  if (rateInput) {
+    const recalcTotal = () => {
+      const rate = parseFloat(rateInput.value) || 0;
+      const total = (r.distanceKm || 0) * rate;
+      const totalEl = document.getElementById("ta-total-value");
+      if (totalEl) totalEl.textContent = "₹" + total.toLocaleString();
+    };
+    rateInput.addEventListener("input", recalcTotal);
+    rateInput.addEventListener("change", async () => {
+      const rate = parseFloat(rateInput.value) || 0;
+      try { await saveReimbursementRate(rate); } catch (e) { /* non-fatal */ }
+      recalcTotal();
+    });
+  }
+
   if (r.status === "Pending") {
     actions.style.display = "flex";
     actions.innerHTML = `
-      <button class="btn primary" onclick="setOnboardingStatus('${r.id}','Approved')">Approve</button>
-      <button class="btn outline" onclick="setOnboardingStatus('${r.id}','Rejected')">Reject</button>
+      <button class="btn primary" onclick="setTravelAllowanceStatus('${r.id}','Approved')">Approve</button>
+      <button class="btn outline" onclick="setTravelAllowanceStatus('${r.id}','Rejected')">Reject</button>
     `;
   } else {
     actions.style.display = "none";
     actions.innerHTML = "";
   }
 
-  modal.dataset.onbId = id;
+  modal.dataset.taId = id;
   modal.style.display = "flex";
 }
 
-function closeOnboardingModal() {
-  const modal = document.getElementById("onboarding-detail-modal");
+function closeTravelAllowanceModal() {
+  const modal = document.getElementById("travel-detail-modal");
   if (modal) modal.style.display = "none";
 }
 
-async function setOnboardingStatus(id, status) {
-  const r = state.onboardingRequests.find(x => x.id === id);
+async function setTravelAllowanceStatus(id, status) {
+  const r = state.travelRequests.find(x => x.id === id);
   if (!r) return;
 
   let note = "";
   if (status === "Rejected") {
-    const input = document.getElementById("onb-review-note");
+    const input = document.getElementById("ta-review-note");
     note = input ? input.value.trim() : "";
     if (!note) {
       note = prompt("Reason for rejection:") || "";
       if (note === null) return;
     }
   } else {
-    const input = document.getElementById("onb-review-note");
+    const input = document.getElementById("ta-review-note");
     note = input ? input.value.trim() : "";
   }
 
   try {
     const hrName = document.getElementById('user-name')?.textContent || 'HR';
-    await API.updateOnboardingStatus(parseInt(id), status, note, hrName);
-    showToast(`Onboarding ${status.toLowerCase()}`);
-    closeOnboardingModal();
-    await loadOnboardingRequests();
-    renderOnboardingAdmin();
+    await API.updateTravelAllowanceStatus(parseInt(id), status, note, hrName);
+    showToast(`Travel Allowance ${status.toLowerCase()}`);
+    closeTravelAllowanceModal();
+    await loadTravelAllowanceRequests();
+    renderTravelAllowanceAdmin();
   } catch (err) {
-    showToast("Failed to update onboarding status");
+    showToast("Failed to update travel allowance status");
   }
 }
 
-async function submitOnboarding() {
-  const requestDate = document.getElementById("onb-date").value;
-  const fromLocation = document.getElementById("onb-from").value.trim();
-  const destination = document.getElementById("onb-destination").value.trim();
-  const travelCost = parseFloat(document.getElementById("onb-cost").value) || 0;
-  const purpose = document.getElementById("onb-purpose").value.trim();
-  const additionalDetails = document.getElementById("onb-details").value.trim();
-  const errEl = document.getElementById("onb-form-error");
-  const btn = document.getElementById("onb-submit-btn");
+async function submitTravelAllowance() {
+  const requestDate = document.getElementById("ta-date").value;
+  const fromLocation = document.getElementById("ta-from").value.trim();
+  const destination = document.getElementById("ta-destination").value.trim();
+  const distanceKm = parseFloat(document.getElementById("ta-cost").value) || 0;
+  const purpose = document.getElementById("ta-purpose").value.trim();
+  const additionalDetails = document.getElementById("ta-details").value.trim();
+  const errEl = document.getElementById("ta-form-error");
+  const btn = document.getElementById("ta-submit-btn");
 
   errEl.style.display = "none";
 
@@ -1520,28 +2083,28 @@ async function submitOnboarding() {
   btn.textContent = "Submitting…";
 
   try {
-    await API.createOnboardingRequest({
+    await API.createTravelAllowanceRequest({
       employeeId: empid,
       requestDate,
       fromLocation,
       destination,
-      travelCost,
+      distanceKm,
       purpose,
       additionalDetails,
     });
 
-    document.getElementById("onb-date").value = "";
-    document.getElementById("onb-from").value = "CADD TECH AVDI BRANCH";
-    document.getElementById("onb-destination").value = "";
-    document.getElementById("onb-cost").value = "";
-    document.getElementById("onb-purpose").value = "";
-    document.getElementById("onb-details").value = "";
+    document.getElementById("ta-date").value = "";
+    document.getElementById("ta-from").value = "CADD TECH AVDI BRANCH";
+    document.getElementById("ta-destination").value = "";
+    document.getElementById("ta-cost").value = "";
+    document.getElementById("ta-purpose").value = "";
+    document.getElementById("ta-details").value = "";
 
-    showToast("Onboarding request submitted!");
-    await loadOnboardingRequests();
-    renderOnboardingEmployee();
+    showToast("Travel Allowance request submitted!");
+    await loadTravelAllowanceRequests();
+    renderTravelAllowanceEmployee();
   } catch (err) {
-    errEl.textContent = err.message || "Failed to submit onboarding request. Run onboarding_schema.sql in Supabase first.";
+    errEl.textContent = err.message || "Failed to submit travel allowance request. Run travel_allowance_schema.sql in Supabase first.";
     errEl.style.display = "block";
   } finally {
     btn.disabled = false;
@@ -1591,6 +2154,15 @@ function maxForAttr(key) {
     if (v > max) max = v;
   });
   return max;
+}
+
+/* Scale denominator for a column: HR-set target if present, else the
+   highest value across staff, else 1. Used to compute the % bar. */
+function scaleDenom(key) {
+  const t = state.perfTargets && state.perfTargets[key];
+  if (t != null && !isNaN(t)) return t > 0 ? t : 1;
+  const m = maxForAttr(key);
+  return m > 0 ? m : 1;
 }
 
 function renderLeaderboard() {
@@ -1736,7 +2308,7 @@ function mountPerfEditor(root, record, onSaved) {
     const v = draft[k];
     const valEl = root.querySelector("#perf-val-" + k);
     if (valEl) valEl.textContent = v;
-    const max = maxForAttr(k) || 1;
+    const max = scaleDenom(k);
     const bar = root.querySelector("#perf-bar-" + k);
     if (bar) bar.style.width = Math.min(100, Math.round((v / max) * 100)) + "%";
     const sl = root.querySelector("#perf-slider-" + k);
@@ -1745,7 +2317,7 @@ function mountPerfEditor(root, record, onSaved) {
 
   tilesEl.innerHTML = attrs.map(a => {
     const val = draft[a.key];
-    const max = maxForAttr(a.key) || 1;
+    const max = scaleDenom(a.key);
     const pct = Math.min(100, Math.round((val / max) * 100));
     return `<div class="perf-tile" data-key="${a.key}">
       <div class="perf-tile-head">
@@ -1854,14 +2426,25 @@ function openAddAttributeModal() {
 
 function renderManageColumnsModal(overlay) {
   const attrs = getPerfAttrs();
+  const targets = state.perfTargets || {};
   const listHTML = attrs.length
-    ? attrs.map(a => `
+    ? attrs.map(a => {
+        const t = targets[a.key];
+        const targetTxt = t != null ? `Target: ${t}` : "No target";
+        return `
         <div class="col-manage-row" data-key="${a.key}">
-          <span class="col-manage-name">${a.label.replace(/\n/g, " ")}</span>
+          <span class="col-manage-name">${a.label.replace(/\n/g, " ")}<br><span class="col-target-val">${targetTxt}</span></span>
           <div class="col-manage-actions">
+            <button class="btn outline sm col-target-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Set Target</button>
             <button class="btn danger sm col-del-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Delete</button>
           </div>
-        </div>`).join("")
+          <div class="col-target-editor" style="display:none;flex-basis:100%;gap:0.5rem;margin-top:0.5rem;align-items:center">
+            <input class="input" type="number" step="any" min="0" placeholder="e.g. 10" value="${t != null ? t : ""}" style="max-width:160px" />
+            <button class="btn primary sm col-target-apply">Apply</button>
+            <button class="btn outline sm col-target-cancel">Cancel</button>
+          </div>
+        </div>`;
+      }).join("")
     : `<p class="sub" style="color:var(--muted-foreground)">No columns yet.</p>`;
 
   overlay.innerHTML = `<div class="modal">
@@ -1913,6 +2496,63 @@ function renderManageColumnsModal(overlay) {
   overlay.querySelectorAll(".col-del-btn").forEach(btn => {
     btn.addEventListener("click", () => confirmDeleteColumn(overlay, btn.dataset.key, btn.dataset.label));
   });
+
+  overlay.querySelectorAll(".col-target-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest(".col-manage-row");
+      const editor = row.querySelector(".col-target-editor");
+      editor.style.display = "flex";
+      editor.querySelector("input").focus();
+    });
+  });
+
+  overlay.querySelectorAll(".col-target-cancel").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const row = btn.closest(".col-manage-row");
+      row.querySelector(".col-target-editor").style.display = "none";
+    });
+  });
+
+  overlay.querySelectorAll(".col-target-apply").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest(".col-manage-row");
+      const key = row.dataset.key;
+      const label = row.querySelector(".col-target-btn").dataset.label;
+      const input = row.querySelector(".col-target-editor input");
+      const num = parseFloat(input.value);
+      if (isNaN(num)) { showToast("Please enter a valid number."); return; }
+      try {
+        await savePerfTarget(key, num);
+        state.perfTargets[key] = num;
+        showToast(`✓ Target for '${label}' set to ${num}`);
+        renderManageColumnsModal(overlay);
+        renderPerformanceAdmin();
+        if (typeof renderPerformanceEmployee === "function") renderPerformanceEmployee();
+      } catch (e) {
+        showToast("Failed to save target: " + (e.message || e));
+      }
+    });
+  });
+}
+
+async function savePerfTarget(attrKey, target) {
+  const { error } = await supabaseClient
+    .from("perf_targets")
+    .upsert({ attr_key: attrKey, target: target }, { onConflict: "attr_key" });
+  if (error) throw error;
+}
+
+async function loadPerfTargets() {
+  try {
+    const { data, error } = await supabaseClient.from("perf_targets").select("attr_key, target");
+    if (error) throw error;
+    const map = {};
+    (data || []).forEach(r => { map[r.attr_key] = Number(r.target); });
+    state.perfTargets = map;
+  } catch (e) {
+    console.warn("Could not load performance targets", e);
+    state.perfTargets = {};
+  }
 }
 
 function confirmDeleteColumn(overlay, key, label) {
@@ -1945,6 +2585,7 @@ function confirmDeleteColumn(overlay, key, label) {
 async function loadStaffPerformance() {
   const data = await API.fetchStaffPerformance();
   state.staffPerformance = data || [];
+  await loadPerfTargets();
 }
 
 // Resets performance points once per month (when the calendar month changes).
@@ -2002,6 +2643,7 @@ function renderPerformanceAdmin() {
 
 function renderPerformanceEmployee() {
   const el = document.getElementById("perf-emp-content");
+  if (!el) return;
   const myName = getEmployee(CURRENT_USER_ID).name;
   const myRecord = state.staffPerformance.find(r => r.empid && r.empid.toString().trim() === CURRENT_USER_ID.toString().trim())
     || state.staffPerformance.find(r => r.staff_name && r.staff_name.trim().toLowerCase() === myName.trim().toLowerCase());
@@ -2479,6 +3121,102 @@ function getAttendanceRecordForDate(empid, dateStr) {
   return r || null;
 }
 
+/* ---------- Shared Attendance Resolution Service ----------
+   Single source of truth for an employee's attendance status on a
+   given date. Used by EVERY attendance view in the app so behaviour
+   stays consistent.
+
+   It consults the scraped attendance (monthly -> last6 -> attendance,
+   via getAttendanceRecordForDate) and applies the approved
+   Work-From-Home override. An approved WFH request for the date
+   always wins, even when the scraped record says "Absent".
+
+   Returns a normalized object:
+     { record, status, checkIn, checkOut, overtime, punches, wfh }
+   where `status` is one of: "Present", "Late", "Absent",
+   "Present WFH". */
+function getWfhRequestForDate(empid, dateStr) {
+  if (!state.wfhRequests || !state.wfhRequests.length) return null;
+  const target = new Date(dateStr);
+  return state.wfhRequests.find(w => {
+    if (w.employeeId !== empid || w.status !== "Approved") return false;
+    const from = new Date(w.from);
+    const to = new Date(w.to);
+    return target >= from && target <= to;
+  }) || null;
+}
+
+/* Approved leave covering a Sunday (capped at 2 Sundays / month) -> "Leave" */
+function getSundayLeaveForDate(empid, dateStr) {
+  if (!state.leaveRequests || !state.leaveRequests.length) return null;
+  const dt = new Date(dateStr);
+  if (dt.getDay() !== 0) return null; // only Sundays
+  const year = dt.getFullYear();
+  const month = dt.getMonth();
+
+  // All Sundays in the month, chronological
+  const sundayDates = [];
+  const dim = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= dim; d++) {
+    const s = new Date(year, month, d);
+    if (s.getDay() === 0) sundayDates.push(iso(s));
+  }
+
+  const MAX_SUNDAY_LEAVE = 2;
+  const covered = sundayDates.filter(sd =>
+    state.leaveRequests.some(l =>
+      l.employeeId === empid &&
+      l.status === "Approved" &&
+      new Date(sd) >= new Date(l.from) &&
+      new Date(sd) <= new Date(l.to)
+    )
+  );
+  const allowed = covered.slice(0, MAX_SUNDAY_LEAVE);
+  if (!allowed.includes(dateStr)) return null;
+
+  return state.leaveRequests.find(l =>
+    l.employeeId === empid &&
+    l.status === "Approved" &&
+    new Date(dateStr) >= new Date(l.from) &&
+    new Date(dateStr) <= new Date(l.to)
+  ) || { status: "Approved" };
+}
+
+function resolveAttendance(empid, dateStr) {
+  const record = getAttendanceRecordForDate(empid, dateStr);
+  let status = "Absent";
+  let checkIn = null, checkOut = null, overtime = 0, punches = [];
+
+  if (record) {
+    checkIn = record.checkIn || null;
+    checkOut = record.checkOut || null;
+    overtime = record.overtime;
+    punches = Array.isArray(record.punches) ? record.punches : [];
+    const hasCI = isValidCheckIn(checkIn);
+    status = !hasCI ? "Absent" : (record.status === "Late" ? "Late" : "Present");
+  }
+
+  const wfh = getWfhRequestForDate(empid, dateStr);
+  if (wfh) {
+    status = "Present WFH";
+    // Use the employee-provided WFH check-in / check-out times when present
+    if (wfh.fromTime) checkIn = wfh.fromTime;
+    if (wfh.toTime) checkOut = wfh.toTime;
+  }
+
+  // An approved Sunday leave fills in an otherwise-absent Sunday as "Leave"
+  if (status === "Absent") {
+    const sunLeave = getSundayLeaveForDate(empid, dateStr);
+    if (sunLeave) {
+      status = "Leave";
+      checkIn = null;
+      checkOut = null;
+    }
+  }
+
+  return { record, status, checkIn, checkOut, overtime, punches, wfh, leave: status === "Leave" ? sunLeave : null };
+}
+
 /* Build a day-by-day record set for an employee & month (within eligible range) */
 function computeMonthDayRecords(empid, year, month) {
   const now = new Date();
@@ -2490,18 +3228,22 @@ function computeMonthDayRecords(empid, year, month) {
   for (let day = 1; day <= eligible; day++) {
     const d = new Date(year, month, day);
     const dateStr = iso(d);
-    const r = getAttendanceRecordForDate(empid, dateStr);
-    const ci = r ? r.checkIn : null;
-    const co = r ? r.checkOut : null;
+    const res = resolveAttendance(empid, dateStr);
+    const r = res.record;
+    const ci = res.checkIn;
+    const co = res.checkOut;
     const hasCI = isValidCheckIn(ci);
     const hasCO = isValidCheckIn(co);
 
-    let status = "absent";
+    let status = res.status === "Present WFH" ? "wfh"
+      : res.status === "Late" ? "late"
+      : res.status === "Present" ? "present"
+      : res.status === "Leave" ? "leave"
+      : "absent";
     let hours = 0;
-    const punches = (r && Array.isArray(r.punches)) ? r.punches : [];
+    const punches = res.punches;
 
-    if (hasCI) {
-      status = (r.status === "Late") ? "late" : "present";
+    if (hasCI && status !== "wfh" && status !== "leave") {
       if (r.overtime && Number(r.overtime) > 0) {
         hours = Number(r.overtime);
       } else if (hasCO) {
@@ -2523,11 +3265,13 @@ function computeMonthDayRecords(empid, year, month) {
 
 function computeMonthStats(empid, year, month) {
   const { records, eligible, isCurrent } = computeMonthDayRecords(empid, year, month);
-  let present = 0, late = 0, absent = 0, totalHours = 0, totalPunches = 0;
+  let present = 0, late = 0, absent = 0, leave = 0, totalHours = 0, totalPunches = 0;
 
   records.forEach(r => {
     if (r.status === "absent") {
       absent++;
+    } else if (r.status === "leave") {
+      leave++;
     } else {
       if (r.status === "late") late++;
       present++;
@@ -2536,15 +3280,99 @@ function computeMonthStats(empid, year, month) {
     }
   });
 
-  const pct = eligible ? Math.round((present / eligible) * 100) : 0;
+  const pct = eligible ? Math.round(((present + leave) / eligible) * 100) : 0;
   const avgHours = present ? Math.round((totalHours / present) * 10) / 10 : 0;
 
   return {
-    present, absent, late,
+    present, absent, late, leave,
     totalHours: Math.round(totalHours * 10) / 10,
     totalPunches, pct, avgHours,
     eligible, isCurrent, records
   };
+}
+
+/* Build day-by-day records for an arbitrary list of dates (may span months) */
+function buildDayRecordsForDates(empid, dates) {
+  return dates.map(d => {
+    const dateStr = iso(d);
+    const res = resolveAttendance(empid, dateStr);
+    const r = res.record;
+    const ci = res.checkIn;
+    const co = res.checkOut;
+    const hasCI = isValidCheckIn(ci);
+    const hasCO = isValidCheckIn(co);
+
+    let status = res.status === "Present WFH" ? "wfh"
+      : res.status === "Late" ? "late"
+      : res.status === "Present" ? "present"
+      : res.status === "Leave" ? "leave"
+      : "absent";
+    let hours = 0;
+    const punches = res.punches;
+
+    if (hasCI && status !== "wfh" && status !== "leave") {
+      if (r.overtime && Number(r.overtime) > 0) {
+        hours = Number(r.overtime);
+      } else if (hasCO) {
+        hours = hoursBetween(ci, co);
+      }
+    }
+
+    return {
+      dateStr, day: d.getDate(),
+      isWeekend: d.getDay() === 0 || d.getDay() === 6,
+      status,
+      checkIn: hasCI ? ci : null,
+      checkOut: hasCO ? co : null,
+      hours, punches
+    };
+  });
+}
+
+/* Render the HTML for a Date/Check-in/Check-out/Punch/Hours table body (HR format) */
+function dayRecordsTableHTML(recs) {
+  if (!recs || recs.length === 0) {
+    return `<tr><td colspan="5" class="empty-state">No attendance records.</td></tr>`;
+  }
+  return recs.map(r => {
+    const punchHTML = r.punches.length
+      ? r.punches.map(p => `<div>${formatPunchTime(p.in)} → ${formatPunchTime(p.out)}</div>`).join("")
+      : '<span style="color:#9ca3af">—</span>';
+
+    const statusBadge = r.status === "absent"
+      ? '<span class="badge absent">Absent</span>'
+      : r.status === "late"
+      ? '<span class="badge warning">Late</span>'
+      : r.status === "wfh"
+      ? '<span class="badge present-wfh">Present WFH</span>'
+      : r.status === "leave"
+      ? '<span class="badge leave">Leave</span>'
+      : '<span class="badge success">Present</span>';
+
+    return `<tr>
+      <td>${formatDate(r.dateStr)} ${statusBadge}</td>
+      <td>${r.checkIn || "—"}</td>
+      <td>${r.checkOut || "—"}</td>
+      <td>${punchHTML}</td>
+      <td>${r.status === "absent" || r.status === "wfh" || r.status === "leave" ? "—" : r.hours + "h"}</td>
+    </tr>`;
+  }).join("");
+}
+
+/* Last 7 calendar days table on the employee dashboard.
+   Falls back to last-6-months data when the current month has fewer elapsed days. */
+function renderLast7DaysTable() {
+  const tbody = document.getElementById("emp-last7-tbody");
+  if (!tbody) return;
+
+  const dates = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dates.push(d);
+  }
+  const recs = buildDayRecordsForDates(window.CURRENT_USER_ID, dates);
+  tbody.innerHTML = dayRecordsTableHTML(recs);
 }
 
 function statCardClickable(stat, label, value, hint, accent = "primary") {
@@ -2682,10 +3510,11 @@ function renderAnalyticsStats(stats) {
     <div class="stats-grid cols-4" style="margin-top:1rem">
       ${statCardClickable("present", "Present", `${stats.present}/${stats.eligible}`, range, "chart5")}
       ${statCardClickable("absent", "Absent", `${stats.absent}/${stats.eligible}`, range, "chart3")}
+      ${statCardClickable("leave", "Leave", `${stats.leave}/${stats.eligible}`, "approved Sunday leave", "chart5")}
       ${statCardHTML("Attendance %", `${stats.pct}%`, "Present / eligible days", "primary")}
-      ${statCardClickable("hours", "Total Hours", `${stats.totalHours}`, "across present days", "accent")}
     </div>
-    <div class="stats-grid cols-3" style="margin-top:1rem">
+    <div class="stats-grid cols-4" style="margin-top:1rem">
+      ${statCardClickable("hours", "Total Hours", `${stats.totalHours}`, "across present days", "accent")}
       ${statCardClickable("late", "Late Arrivals", `${stats.late}`, "after 11:00 AM", "chart3")}
       ${statCardClickable("punches", "Total Punches", `${stats.totalPunches}`, "multiple logins", "chart5")}
       ${statCardHTML("Avg Hours / Day", `${stats.avgHours}`, "on present days", "primary")}
@@ -2701,6 +3530,10 @@ function renderAnalyticsStats(stats) {
 function statRowHTML(r) {
   const badge = r.status === "late"
     ? '<span class="badge warning">Late</span>'
+    : r.status === "wfh"
+    ? '<span class="badge present-wfh">Present WFH</span>'
+    : r.status === "leave"
+    ? '<span class="badge leave">Leave</span>'
     : '<span class="badge success">Present</span>';
   return `<div class="analytics-detail-row">
     <span>${formatDate(r.dateStr)}</span>
@@ -2727,6 +3560,11 @@ function showAnalyticsStatDetail(stat, stats) {
   } else if (stat === "late") {
     title = `Late Arrivals (${stats.late})`;
     rows = stats.records.filter(r => r.status === "late").map(statRowHTML);
+  } else if (stat === "leave") {
+    title = `Leave Days (${stats.leave})`;
+    rows = stats.records.filter(r => r.status === "leave").map(r =>
+      `<div class="analytics-detail-row"><span>${formatDate(r.dateStr)}</span><span class="badge leave">Leave</span></div>`
+    );
   } else if (stat === "hours") {
     title = `Hours Worked Breakdown (${stats.totalHours}h total)`;
     rows = presentRecs.map(r =>
@@ -2754,7 +3592,7 @@ function renderAnalyticsCalendar(empid, year, month) {
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  let presentCount = 0, lateCount = 0, absentCount = 0;
+  let presentCount = 0, lateCount = 0, absentCount = 0, leaveCount = 0;
 
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   let calHTML = dayNames.map(d => `<div class="att-cal-day-header">${d}</div>`).join("");
@@ -2769,20 +3607,35 @@ function renderAnalyticsCalendar(empid, year, month) {
 
     let statusClass = "", statusText = "", checkInStr = "", checkOutStr = "";
 
-    const r = getAttendanceRecordForDate(empid, dateStr);
-    const hasCI = r && isValidCheckIn(r.checkIn);
-    const hasCO = r && isValidCheckIn(r.checkOut);
+    const res = resolveAttendance(empid, dateStr);
+    const r = res.record;
 
-    if (hasCI || hasCO) {
-      checkInStr = hasCI ? r.checkIn : "—";
-      checkOutStr = hasCO ? r.checkOut : "—";
-      statusClass = (r.status === "Late") ? "cal-late" : "cal-present";
-      statusText = (r.status === "Late") ? "Late" : "Present";
-      if (statusClass === "cal-late") lateCount++; else presentCount++;
-    } else if (r) {
-      statusClass = "cal-absent";
-      statusText = "Absent";
-      absentCount++;
+    if (res.status === "Present WFH") {
+      statusClass = "cal-wfh";
+      statusText = "Present WFH";
+      const hasCI = res.checkIn && isValidCheckIn(res.checkIn);
+      const hasCO = res.checkOut && isValidCheckIn(res.checkOut);
+      checkInStr = hasCI ? res.checkIn : "";
+      checkOutStr = hasCO ? res.checkOut : "";
+      presentCount++;
+    } else if (res.status === "Leave") {
+      statusClass = "cal-leave";
+      statusText = "Leave";
+      leaveCount++;
+    } else {
+      const hasCI = r && isValidCheckIn(r.checkIn);
+      const hasCO = r && isValidCheckIn(r.checkOut);
+      if (hasCI || hasCO) {
+        checkInStr = hasCI ? r.checkIn : "—";
+        checkOutStr = hasCO ? r.checkOut : "—";
+        statusClass = (r.status === "Late") ? "cal-late" : "cal-present";
+        statusText = (r.status === "Late") ? "Late" : "Present";
+        if (statusClass === "cal-late") lateCount++; else presentCount++;
+      } else if (r) {
+        statusClass = "cal-absent";
+        statusText = "Absent";
+        absentCount++;
+      }
     }
 
     const cellClass = ["att-cal-cell", statusClass, isWeekend ? "weekend" : "", isToday ? "today" : ""]
@@ -2807,11 +3660,12 @@ function renderAnalyticsCalendar(empid, year, month) {
 
   const summaryEl = document.getElementById("analytics-cal-summary");
   if (summaryEl) {
-    const totalMarked = presentCount + lateCount + absentCount;
-    const rate = totalMarked ? Math.round(((presentCount + lateCount) / totalMarked) * 100) : 0;
+    const totalMarked = presentCount + lateCount + absentCount + leaveCount;
+    const rate = totalMarked ? Math.round(((presentCount + lateCount + leaveCount) / totalMarked) * 100) : 0;
     summaryEl.innerHTML = `
       <span class="att-cal-stat"><span class="dot" style="background:#10b981"></span>Present <b>${presentCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#f59e0b"></span>Late <b>${lateCount}</b></span>
+      <span class="att-cal-stat"><span class="dot" style="background:#64748b"></span>Leave <b>${leaveCount}</b></span>
       <span class="att-cal-stat"><span class="dot" style="background:#ef4444"></span>Absent <b>${absentCount}</b></span>
       <span class="att-cal-stat">Attendance <b>${rate}%</b></span>`;
   }
@@ -2834,14 +3688,18 @@ function renderAnalyticsTable(stats) {
 
     const statusBadge = r.status === "absent"
       ? '<span class="badge absent">Absent</span>'
-      : (r.status === "late" ? '<span class="badge warning">Late</span>' : '<span class="badge success">Present</span>');
+      : r.status === "late"
+      ? '<span class="badge warning">Late</span>'
+      : r.status === "wfh"
+      ? '<span class="badge present-wfh">Present WFH</span>'
+      : '<span class="badge success">Present</span>';
 
     return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
       <td>${punchHTML}</td>
-      <td>${r.status === "absent" ? "—" : r.hours + "h"}</td>
+      <td>${r.status === "absent" || r.status === "wfh" ? "—" : r.hours + "h"}</td>
     </tr>`;
   }).join("");
 }
@@ -2854,10 +3712,10 @@ function updateChartToggleStyles(prefix, activeValue) {
   if (prefix === "pie-mode") {
     applyToggleStyle("pie-mode-week", activeValue === "Week" ? activeStyle : inactiveStyle);
     applyToggleStyle("pie-mode-month", activeValue === "Month" ? activeStyle : inactiveStyle);
-  } else if (prefix === "chart-type") {
-    ["bar", "area", "line"].forEach(t => {
-      applyToggleStyle(`chart-type-${t}`, activeValue.toLowerCase() === t ? activeStyle : inactiveStyle);
-    });
+  }
+  if (prefix === "hours-mode") {
+    applyToggleStyle("hours-mode-bar", activeValue === "Bar" ? activeStyle : inactiveStyle);
+    applyToggleStyle("hours-mode-line", activeValue === "Line" ? activeStyle : inactiveStyle);
   }
 }
 
@@ -2896,12 +3754,15 @@ async function syncEmployeesFromSupabase() {
         department: det.department || p.department || 'Training',
         email: det.email || p.email || `${p.empid}@caddtech.com`,
         phone: det.phone || p.phone || '+91 99001 22334',
+        branch: det.branch || null,
         location: det.location || p.location || 'Bengaluru',
         manager: mock ? mock.manager : 'Priya Nair',
         joinDate: det.join_date || p.join_date || '2024-01-01',
         employmentType: det.employment_type || p.employment_type || 'Full-time',
         status: mock ? mock.status : 'Active',
-        about: det.description || mock?.about || 'Employee profile stored in system.'
+        about: det.description || mock?.about || 'Employee profile stored in system.',
+        shiftCheckin: p.shift_checkin || null,
+        shiftCheckout: p.shift_checkout || null
       };
     });
 
@@ -2910,6 +3771,56 @@ async function syncEmployeesFromSupabase() {
   } catch (err) {
     console.error("Failed to sync employees from database:", err);
   }
+}
+
+/* ---------- Custom-capable selects (branch / department) ---------- */
+const CUSTOM_OPTION = "__custom__";
+
+function setupCustomSelect(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  const inp = document.getElementById(inputId);
+  if (!sel || !inp) return;
+  if (sel._customBound) return;
+  sel._customBound = true;
+  const toggle = () => { inp.style.display = sel.value === CUSTOM_OPTION ? "block" : "none"; };
+  sel.addEventListener("change", toggle);
+  toggle();
+}
+
+function getCustomValue(selectId, inputId) {
+  const sel = document.getElementById(selectId);
+  const inp = document.getElementById(inputId);
+  if (!sel) return "";
+  if (sel.value === CUSTOM_OPTION && inp) return inp.value.trim();
+  return sel.value;
+}
+
+function addExtraOptions(selectId, values) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  const customOpt = sel.querySelector(`option[value="${CUSTOM_OPTION}"]`);
+  values.forEach(v => {
+    if (!v) return;
+    const exists = Array.from(sel.options).some(o => o.value === v);
+    if (!exists) {
+      const opt = document.createElement("option");
+      opt.value = v; opt.textContent = v;
+      if (customOpt) sel.insertBefore(opt, customOpt);
+      else sel.appendChild(opt);
+    }
+  });
+}
+
+/* Pull previously-saved custom branches/departments from other employees */
+async function loadCustomOptionsFromDb() {
+  try {
+    const { data } = await supabaseClient.from("employee_details").select("branch, department");
+    if (!data) return;
+    const branches = new Set(), depts = new Set();
+    data.forEach(d => { if (d.branch) branches.add(d.branch); if (d.department) depts.add(d.department); });
+    addExtraOptions("profile-branch", branches);
+    addExtraOptions("profile-dept", depts);
+  } catch (e) { /* employee_details may not exist yet */ }
 }
 
 function renderProfile() {
@@ -2922,6 +3833,7 @@ function renderProfile() {
   const phoneEl = document.getElementById("profile-phone");
   const deptEl = document.getElementById("profile-dept");
   const locEl = document.getElementById("profile-location");
+  const branchEl = document.getElementById("profile-branch");
   const joinedEl = document.getElementById("profile-joined");
   const empTypeEl = document.getElementById("profile-employment");
   const desigEl = document.getElementById("profile-designation");
@@ -2932,9 +3844,27 @@ function renderProfile() {
   if (emailEl) emailEl.value = me.email || "";
   if (phoneEl) phoneEl.value = me.phone || "";
   if (deptEl) deptEl.value = me.department || "Training";
-  if (locEl) locEl.value = me.location || "Bengaluru";
+  if (locEl) locEl.value = me.location || "";
+  if (branchEl) branchEl.value = me.branch || "Avadi";
   if (desigEl) desigEl.value = me.title || "";
   if (descEl) descEl.value = me.description || me.about || "";
+
+  // Bring in any custom branches/departments previously saved by others
+  loadCustomOptionsFromDb().then(() => {
+    if (deptEl && me.department && !Array.from(deptEl.options).some(o => o.value === me.department)) {
+      const opt = document.createElement("option"); opt.value = me.department; opt.textContent = me.department;
+      deptEl.insertBefore(opt, deptEl.querySelector(`option[value="${CUSTOM_OPTION}"]`));
+      deptEl.value = me.department;
+    }
+    if (branchEl && me.branch && !Array.from(branchEl.options).some(o => o.value === me.branch)) {
+      const opt = document.createElement("option"); opt.value = me.branch; opt.textContent = me.branch;
+      branchEl.insertBefore(opt, branchEl.querySelector(`option[value="${CUSTOM_OPTION}"]`));
+      branchEl.value = me.branch;
+    }
+  });
+
+  setupCustomSelect("profile-dept", "profile-dept-custom");
+  setupCustomSelect("profile-branch", "profile-branch-custom");
   
   if (joinedEl) {
     if (me.joinDate) {
@@ -2967,12 +3897,15 @@ async function saveProfile(e) {
 
   const email = document.getElementById("profile-email").value.trim();
   const phone = document.getElementById("profile-phone").value.trim();
-  const dept = document.getElementById("profile-dept").value;
+  const dept = getCustomValue("profile-dept", "profile-dept-custom");
   const location = document.getElementById("profile-location").value;
+  const branch = getCustomValue("profile-branch", "profile-branch-custom");
   const joined = document.getElementById("profile-joined").value;
   const employment = document.getElementById("profile-employment").value;
   const designation = document.getElementById("profile-designation")?.value.trim() || "";
   const description = document.getElementById("profile-description")?.value.trim() || "";
+
+  if (!dept) { alert("Please select or type a department."); saveBtn.disabled = false; saveText.textContent = "Save Changes"; return; }
 
   try {
     const user = await Session.getUser();
@@ -2988,7 +3921,8 @@ async function saveProfile(e) {
         email: email,
         phone: phone,
         department: dept,
-        location: location,
+        branch: branch || null,
+        location: location || null,
         join_date: joined || null,
         employment_type: employment
       }, {
@@ -3007,6 +3941,7 @@ async function saveProfile(e) {
       me.email = email;
       me.phone = phone;
       me.department = dept;
+      me.branch = branch;
       me.location = location;
       me.joinDate = joined;
       me.employmentType = employment;
