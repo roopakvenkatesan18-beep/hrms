@@ -642,8 +642,49 @@ const API = (() => {
   }
 
   /**
-   * Fetch all staff performance records for leaderboard
+   * Fetch permission requests. If empid provided, fetch only that employee's.
    */
+  async function fetchPermissionRequests(empid = null) {
+    try {
+      let query = supabaseClient.from('permission_requests').select('*').order('created_at', { ascending: false });
+      if (empid) {
+        query = query.eq('employee_id', empid);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (err) {
+      console.error('[API] fetchPermissionRequests Error:', err);
+      return [];
+    }
+  }
+
+  /**
+   * Create a new permission request (employee only, status fixed to 'Approved')
+   */
+  async function createPermissionRequest(employeeId, date, fromTime, toTime, durationMinutes, reason) {
+    try {
+      const { data, error } = await supabaseClient
+        .from('permission_requests')
+        .insert([{
+          employee_id: employeeId,
+          date,
+          from_time: fromTime,
+          to_time: toTime,
+          duration_minutes: durationMinutes,
+          reason,
+          status: 'Approved'
+        }])
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('[API] createPermissionRequest Error:', err);
+      throw err;
+    }
+  }
+
   async function fetchStaffPerformance() {
     try {
       const { data, error } = await supabaseClient
@@ -975,6 +1016,8 @@ const API = (() => {
     fetchWfhRequests,
     createWfhRequest,
     updateWfhStatus,
+    fetchPermissionRequests,
+    createPermissionRequest,
     fetchStaffPerformance,
     updateStaffPerformance,
     createStaffPerformance,

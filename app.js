@@ -12,6 +12,7 @@ const state = {
   leaveRequests: [],
   wfhRequests: [],
   travelRequests: [],
+  permissionRequests: [],
   travelFilterEmp: "all",
   reimbursementRate: 0,
   staffPerformance: [],
@@ -38,6 +39,9 @@ const state = {
 };
 
 const SLOT_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#f97316"];
+
+/* Monthly permission quota: 3 hours = 180 minutes per employee, per month */
+const PERMISSION_MONTHLY_MINUTES = 180;
 
 /* ---------- Helpers ---------- */
 function badgeClass(status) {
@@ -1482,6 +1486,7 @@ function renderAttendanceCalendar() {
   const year = now.getFullYear();
   const month = now.getMonth() + offset;
   const todayDateStr = iso(new Date());
+  const permSet = getPermissionDatesForEmployee(CURRENT_USER_ID);
 
   // Show/hide nav buttons
   const prevBtn = document.getElementById("cal-prev-btn");
@@ -1564,6 +1569,7 @@ function renderAttendanceCalendar() {
           ${statusText ? `<span class="att-cal-badge ${statusClass}">${statusText}</span>` : ""}
         </div>
         ${checkInStr ? `<div class="att-cal-time"><span class="att-cal-checkin">${timeWithAmPm(checkInStr)}</span><span class="att-cal-sep">→</span><span class="att-cal-checkout">${timeWithAmPm(checkOutStr)}</span></div>` : ""}
+        ${permSet.has(dateStr) ? `<div class="att-cal-perm">Permission used</div>` : ""}
       </div>
     `;
   }
@@ -1649,6 +1655,8 @@ function renderLeaveAdmin() {
   document.getElementById("leave-admin-recent").innerHTML = recent.length
     ? recent.map(l => leaveRowHTML(l, false)).join("")
     : `<p class="empty-state">No recently processed requests.</p>`;
+
+  renderPermissionAdmin();
 }
 
 async function setLeaveStatus(id, status) {
@@ -1688,6 +1696,8 @@ function renderLeaveEmployee() {
       </div>
     </div>
   `).join("");
+
+  renderPermissionEmployee();
 }
 
 function leaveFormError(msg) {
@@ -1868,6 +1878,194 @@ async function submitWfh() {
   } catch (err) {
     showToast("Failed to submit WFH request");
   }
+}
+
+/* ---------- Permission Requests (Supabase) ---------- */
+/* Format a duration in minutes as "Xh Ym" / "Xh" / "Ym" */
+function formatDuration(minutes) {
+  minutes = Math.max(0, Math.round(minutes || 0));
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h && m) return `${h}h ${m}m`;
+  if (h) return `${h}h`;
+  return `${m}m`;
+}
+
+/* Parse a "HH:MM" (or "HH:MM:SS") time string to minutes since midnight */
+function timeToMinutesOfDay(t) {
+  if (!t) return null;
+  const m = String(t).match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+/* True when dateStr falls in the given year/month */
+function sameMonth(dateStr, year, month) {
+  const d = new Date(dateStr + "T00:00:00");
+  return d.getFullYear() === year && d.getMonth() === month;
+}
+
+/* Set of dates (ISO) on which the employee has a permission (approved) */
+function getPermissionDatesForEmployee(empid) {
+  const set = new Set();
+  (state.permissionRequests || []).forEach(p => {
+    if (p.employeeId === empid && p.status === "Approved") set.add(p.date);
+  });
+  return set;
+}
+
+/* Total approved permission minutes used by an employee in the refDate's month */
+function getPermissionUsedMinutes(empid, refDate) {
+  const d = refDate || new Date();
+  const year = d.getFullYear(), month = d.getMonth();
+  return (state.permissionRequests || [])
+    .filter(p => p.employeeId === empid && p.status === "Approved" && sameMonth(p.date, year, month))
+    .reduce((s, p) => s + (Number(p.durationMinutes) || 0), 0);
+}
+
+/* Remaining permission minutes for the refDate's month (never negative) */
+function getPermissionRemainingMinutes(empid, refDate) {
+  return Math.max(0, PERMISSION_MONTHLY_MINUTES - getPermissionUsedMinutes(empid, refDate));
+}
+
+async function loadPermissionRequests() {
+  const data = await API.fetchPermissionRequests(
+    state.role === "admin" ? null : window.CURRENT_USER_ID
+  );
+  state.permissionRequests = data.map(r => ({
+    id: r.id.toString(),
+    employeeId: r.employee_id,
+    date: r.date,
+    fromTime: r.from_time || "",
+    toTime: r.to_time || "",
+    durationMinutes: Number(r.duration_minutes) || 0,
+    reason: r.reason || "",
+    status: r.status,
+    createdAt: r.created_at
+  }));
+}
+
+/* Live duration preview as the employee types the from/to times */
+function updatePermissionDurationPreview() {
+  const fromTime = document.getElementById("permission-from-time")?.value;
+  const toTime = document.getElementById("permission-to-time")?.value;
+  const el = document.getElementById("permission-duration-preview");
+  if (!el) return;
+  const fromMin = timeToMinutesOfDay(fromTime);
+  const toMin = timeToMinutesOfDay(toTime);
+  if (fromMin == null || toMin == null || toMin <= fromMin) { el.textContent = "0m"; return; }
+  el.textContent = formatDuration(toMin - fromMin);
+}
+
+function permissionFormError(msg) {
+  const errEl = document.getElementById("permission-form-error");
+  if (!errEl) return;
+  errEl.textContent = msg || "";
+  errEl.style.display = msg ? "block" : "none";
+}
+
+async function submitPermission() {
+  const date = document.getElementById("permission-date")?.value;
+  const fromTime = document.getElementById("permission-from-time")?.value;
+  const toTime = document.getElementById("permission-to-time")?.value;
+  const reason = (document.getElementById("permission-reason")?.value || "").trim();
+
+  if (!date) { permissionFormError("Please select a date."); return; }
+  if (!fromTime || !toTime) { permissionFormError("Please select both From and To times."); return; }
+
+  const fromMin = timeToMinutesOfDay(fromTime);
+  const toMin = timeToMinutesOfDay(toTime);
+  if (fromMin == null || toMin == null) { permissionFormError("Invalid time values."); return; }
+  if (toMin <= fromMin) { permissionFormError("To time must be after From time."); return; }
+
+  const duration = toMin - fromMin;
+  const refDate = new Date(date + "T00:00:00");
+  const used = getPermissionUsedMinutes(CURRENT_USER_ID, refDate);
+  const remaining = PERMISSION_MONTHLY_MINUTES - used;
+
+  if (duration > remaining) {
+    permissionFormError(`Exceeds your remaining permission balance (${formatDuration(remaining)} left this month).`);
+    return;
+  }
+
+  try {
+    await API.createPermissionRequest(CURRENT_USER_ID, date, fromTime, toTime, duration, reason);
+
+    // Reset form
+    document.getElementById("permission-date").value = "";
+    document.getElementById("permission-from-time").value = "";
+    document.getElementById("permission-to-time").value = "";
+    document.getElementById("permission-reason").value = "";
+    const durEl = document.getElementById("permission-duration-preview");
+    if (durEl) durEl.textContent = "0m";
+    permissionFormError("");
+
+    showToast("Permission request submitted!");
+    await loadPermissionRequests();
+    renderPermissionEmployee();
+    if (state.page === "attendance") renderAttendanceCalendar();
+  } catch (err) {
+    showToast("Failed to submit permission request");
+  }
+}
+
+function renderPermissionEmployee() {
+  const usedMin = getPermissionUsedMinutes(CURRENT_USER_ID);
+  const remainingMin = getPermissionRemainingMinutes(CURRENT_USER_ID);
+  const mine = (state.permissionRequests || []).filter(p => p.employeeId === CURRENT_USER_ID);
+
+  const statsEl = document.getElementById("permission-emp-stats");
+  if (statsEl) statsEl.innerHTML =
+    statCardHTML("Used", formatDuration(usedMin), "This month", "chart5") +
+    statCardHTML("Remaining", formatDuration(remainingMin), "Of 3h monthly quota", "primary") +
+    statCardHTML("Requests", mine.length, null, "chart3");
+
+  const listEl = document.getElementById("permission-emp-requests");
+  if (!listEl) return;
+
+  if (mine.length === 0) {
+    listEl.innerHTML = `<p class="empty-state">No permission requests yet.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = mine.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(p => `
+    <div class="list-row">
+      <div class="list-row-info">
+        <div class="title">Permission · ${formatDate(p.date)}</div>
+        <div class="sub">${p.fromTime} – ${p.toTime} · ${formatDuration(p.durationMinutes)}${p.reason ? ` · ${escapeHtml(p.reason)}` : ""}</div>
+      </div>
+      ${badgeHTML(p.status)}
+    </div>`).join("");
+}
+
+function renderPermissionAdmin() {
+  const all = state.permissionRequests || [];
+
+  const statsEl = document.getElementById("permission-admin-stats");
+  if (statsEl) statsEl.innerHTML =
+    statCardHTML("Total Requests", all.length, null, "chart5") +
+    statCardHTML("This Month", all.filter(p => sameMonth(p.date, new Date().getFullYear(), new Date().getMonth())).length, null, "chart3") +
+    statCardHTML("Total Used", formatDuration(all.filter(p => p.status === "Approved").reduce((s, p) => s + (p.durationMinutes || 0), 0)), "Approved only", "primary");
+
+  const listEl = document.getElementById("permission-admin-list");
+  if (!listEl) return;
+
+  if (all.length === 0) {
+    listEl.innerHTML = `<p class="empty-state">No permission requests yet.</p>`;
+    return;
+  }
+
+  listEl.innerHTML = all.slice().sort((a, b) => String(b.date).localeCompare(String(a.date))).map(p => {
+    const emp = getEmployee(p.employeeId);
+    return `<div class="list-row">
+      ${avatarHTML(emp.name)}
+      <div class="list-row-info">
+        <div class="title">${escapeHtml(emp.name)} — Permission</div>
+        <div class="sub">${formatDate(p.date)} · ${p.fromTime} – ${p.toTime} · ${formatDuration(p.durationMinutes)}${p.reason ? ` · ${escapeHtml(p.reason)}` : ""}</div>
+      </div>
+      ${badgeHTML(p.status)}
+    </div>`;
+  }).join("");
 }
 
 /* ---------- Travel Allowance (Supabase) ---------- */
@@ -2826,6 +3024,8 @@ state.chatProfiles = {};      // uuid -> { name, empid }
 state.chatConvs = [];         // [{ conversationId, participantUuid, participantName, lastMsg }]
 state.chatMessages = [];      // messages for active conversation
 state.activeContactUuid = ""; // active selected member's UUID
+state.chatUnread = {};        // conversationId -> unread message count (sender != me, after lastSeen)
+state.chatLastSeen = {};      // conversationId -> ISO timestamp last opened by me
 
 async function loadChatData() {
   const msgEl = document.getElementById('chat-messages');
@@ -2873,6 +3073,16 @@ async function loadChatData() {
     lastMsgMap[m.conversation_id] = m.text;
   });
 
+  // Compute unread counts (WhatsApp-style): messages from others after lastSeen
+  state.chatUnread = {};
+  allMsgs.forEach(m => {
+    if (m.sender_id === myUid) return;
+    const seen = state.chatLastSeen[m.conversation_id];
+    if (!seen || new Date(m.created_at) > new Date(seen)) {
+      state.chatUnread[m.conversation_id] = (state.chatUnread[m.conversation_id] || 0) + 1;
+    }
+  });
+
   // 4. Map other profiles to conversation items (our sidebar contacts)
   const otherProfiles = profiles.filter(p => p.id !== myUid);
 
@@ -2905,6 +3115,7 @@ async function loadChatData() {
   // Load messages for active conversation
   await loadActiveMessages();
   renderChat();
+  updateChatNavUnread();
 }
 
 async function loadActiveMessages() {
@@ -2934,10 +3145,10 @@ function renderChat() {
   } else {
     convListEl.innerHTML = filtered.map(c => {
       const isActive = state.activeContactUuid === c.participantUuid;
-      return `<button class="chat-conv-btn ${isActive ? 'active' : ''}" data-contact-uuid="${c.participantUuid}" data-conv-id="${c.conversationId || ''}">
+       return `<button class="chat-conv-btn ${isActive ? 'active' : ''}" data-contact-uuid="${c.participantUuid}" data-conv-id="${c.conversationId || ''}">
         ${avatarHTML(c.participantName, 'md', 'accent')}
         <div class="chat-conv-info">
-          <div class="chat-conv-name">${escapeHtml(c.participantName)}</div>
+          <div class="chat-conv-name">${escapeHtml(c.participantName)}${state.chatUnread[c.conversationId] ? `<span class="chat-unread-dot" title="${state.chatUnread[c.conversationId]} unread"></span>` : ''}</div>
           <div class="chat-conv-msg">${escapeHtml(c.lastMsg || '')}</div>
         </div>
       </button>`;
@@ -2949,8 +3160,14 @@ function renderChat() {
     btn.addEventListener('click', async () => {
       state.activeContactUuid = btn.dataset.contactUuid;
       state.activeConversationId = btn.dataset.convId || null;
+      // Mark this conversation as seen (clear unread - WhatsApp style)
+      if (state.activeConversationId) {
+        state.chatLastSeen[state.activeConversationId] = new Date().toISOString();
+        state.chatUnread[state.activeConversationId] = 0;
+      }
       await loadActiveMessages();
       renderChat();
+      updateChatNavUnread();
     });
   });
 
@@ -3034,6 +3251,23 @@ function renderChat() {
     if (headerEl) headerEl.style.display = 'none';
     if (inputRow) inputRow.style.display = 'none';
     if (msgEl) msgEl.innerHTML = `<div class="empty-state">Select a conversation</div>`;
+  }
+}
+
+// Show/hide the Team Chat nav red dot based on any unread conversation
+function updateChatNavUnread() {
+  const nav = document.querySelector('#sidebar-nav .nav-item[data-page="chat"]');
+  if (!nav) return;
+  const total = Object.values(state.chatUnread || {}).reduce((a, b) => a + (b ? 1 : 0), 0);
+  let dot = nav.querySelector('.nav-unread-dot');
+  if (total > 0) {
+    if (!dot) {
+      dot = document.createElement('span');
+      dot.className = 'nav-unread-dot';
+      nav.appendChild(dot);
+    }
+  } else if (dot) {
+    dot.remove();
   }
 }
 
@@ -3750,6 +3984,7 @@ function showAnalyticsStatDetail(stat, stats) {
 
 function renderAnalyticsCalendar(empid, year, month) {
   const todayDateStr = iso(new Date());
+  const permSet = getPermissionDatesForEmployee(empid);
   const firstDay = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
@@ -3815,6 +4050,7 @@ function renderAnalyticsCalendar(empid, year, month) {
           ${statusText ? `<span class="att-cal-badge ${statusClass.replace('cal-', '')}">${statusText}</span>` : ""}
         </div>
         ${checkInStr ? `<div class="att-cal-time"><span class="att-cal-checkin">${timeWithAmPm(checkInStr)}</span><span class="att-cal-sep">→</span><span class="att-cal-checkout">${timeWithAmPm(checkOutStr)}</span></div>` : ""}
+        ${permSet.has(dateStr) ? `<div class="att-cal-perm">Permission used</div>` : ""}
       </div>`;
   }
 

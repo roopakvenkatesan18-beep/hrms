@@ -213,9 +213,9 @@
   <script src="js/session.js?v=9"></script>
   <script src="js/auth.js?v=7"></script>
   <script src="js/roleGuard.js?v=3"></script>
-  <script src="js/api.js?v=17"></script>
+  <script src="js/api.js?v=19"></script>
   <script src="data.js?v=2"></script>
-  <script src="app.js?v=37"></script>
+  <script src="app.js?v=41"></script>
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
@@ -270,6 +270,9 @@
 
       // Load approved leave requests so Sunday leaves resolve as "Leave"
       await loadLeaveRequests();
+
+      // Load permission requests so the analytics calendar can show "permission used"
+      await loadPermissionRequests();
 
       // Sidebar / menu wiring (lightweight)
       document.getElementById('menu-btn')?.addEventListener('click', () => {

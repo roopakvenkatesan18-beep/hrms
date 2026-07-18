@@ -344,6 +344,27 @@ it should <!DOCTYPE html>
             <div class="card-header"><h3>My Requests</h3></div>
             <div class="card-body" id="leave-emp-requests"></div>
           </div>
+
+          <!-- ===== PERMISSION — EMPLOYEE ===== -->
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header"><h3>My Permission (3h / month)</h3></div>
+            <div class="card-body">
+              <div class="stats-grid cols-3" id="permission-emp-stats" style="margin-bottom:1rem"></div>
+              <div class="leave-form">
+                <div><label>Date</label><input type="date" class="input" id="permission-date" /></div>
+                <div><label>From Time</label><input type="time" class="input" id="permission-from-time" /></div>
+                <div><label>To Time</label><input type="time" class="input" id="permission-to-time" /></div>
+                <div><label>Duration</label><span class="permission-duration" id="permission-duration-preview">0m</span></div>
+                <div style="grid-column:1/-1"><label>Reason</label><input class="input" id="permission-reason" placeholder="Brief reason..." /></div>
+                <button class="btn primary" id="permission-submit-btn">Submit Permission</button>
+                <div id="permission-form-error" class="form-error" style="display:none"></div>
+              </div>
+            </div>
+          </div>
+          <div class="card" style="margin-top:1.5rem">
+            <div class="card-header"><h3>My Permission History</h3></div>
+            <div class="card-body" id="permission-emp-requests"></div>
+          </div>
         </section>
 
         <!-- ===== WFH — EMPLOYEE ===== -->
@@ -630,9 +651,9 @@ it should <!DOCTYPE html>
   <script src="js/session.js?v=9"></script>
   <script src="js/auth.js?v=7"></script>
   <script src="js/roleGuard.js?v=3"></script>
-  <script src="js/api.js?v=17"></script>
+  <script src="js/api.js?v=19"></script>
   <script src="data.js?v=3"></script>
-  <script src="app.js?v=39"></script>
+  <script src="app.js?v=41"></script>
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
@@ -733,6 +754,9 @@ it should <!DOCTYPE html>
 
       // Load travel allowance requests from Supabase
       await loadTravelAllowanceRequests();
+
+      // Load permission requests (for calendar + leave module)
+      await loadPermissionRequests();
 
       // Load staff performance from Supabase
       await loadStaffPerformance();
@@ -851,6 +875,11 @@ it should <!DOCTYPE html>
 
       // WFH submit
       document.getElementById('wfh-submit-btn')?.addEventListener('click', submitWfh);
+
+      // Permission submit + live duration preview
+      document.getElementById('permission-submit-btn')?.addEventListener('click', submitPermission);
+      document.getElementById('permission-from-time')?.addEventListener('input', updatePermissionDurationPreview);
+      document.getElementById('permission-to-time')?.addEventListener('input', updatePermissionDurationPreview);
 
       // Auto-set "To" date = "From" date for a one-day leave default
       const leaveFromEl = document.getElementById('leave-from');
