@@ -42,6 +42,15 @@
           <span id="login-error-text">Invalid Employee ID or password</span>
         </div>
 
+        <!-- Success Banner (shown after a successful password change) -->
+        <div class="login-success" id="login-success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+            <polyline points="22 4 12 14.01 9 11.01"/>
+          </svg>
+          <span id="login-success-text">Password changed successfully. Please sign in.</span>
+        </div>
+
         <!-- Employee ID -->
         <div class="login-field">
           <label for="empid-input">Employee ID</label>
@@ -102,6 +111,12 @@
           </label>
         </div>
 
+        <!-- Password Help Links -->
+        <div class="login-links">
+          <button type="button" class="login-link secondary" id="forgot-password-btn">Forgot password?</button>
+          <a href="change-password.html" class="login-link">Change password</a>
+        </div>
+
         <!-- Submit Button -->
         <button type="submit" class="login-btn" id="login-btn">
           <span id="login-btn-text">Sign In</span>
@@ -144,9 +159,11 @@
       const loginSpinner = document.getElementById('login-spinner');
       const errorEl = document.getElementById('login-error');
       const errorText = document.getElementById('login-error-text');
+      const successEl = document.getElementById('login-success');
       const passwordToggle = document.getElementById('password-toggle');
       const eyeShow = document.getElementById('eye-icon-show');
       const eyeHide = document.getElementById('eye-icon-hide');
+      const forgotBtn = document.getElementById('forgot-password-btn');
 
       // Show/Hide Password Toggle
       passwordToggle.addEventListener('click', () => {
@@ -160,6 +177,19 @@
       // Hide error when user starts typing
       empidInput.addEventListener('input', () => hideError());
       passwordInput.addEventListener('input', () => hideError());
+
+      // Forgot password: self-service reset is NOT allowed. Direct the user
+      // to contact HR (only HR can reset passwords through the HR interface).
+      forgotBtn.addEventListener('click', () => {
+        hideError();
+        showError('Password reset is handled by HR. Please contact your HR administrator to reset your password.');
+      });
+
+      // Show success banner if redirected after a password change
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('changed') === '1') {
+        successEl.classList.add('visible');
+      }
 
       // Form Submit
       form.addEventListener('submit', async (e) => {

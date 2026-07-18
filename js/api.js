@@ -132,38 +132,46 @@ const API = (() => {
   /**
    * Add a new employee (HR Admin only)
    * Uses a secondary Supabase client with persistSession: false so the HR admin is not logged out!
+   *
+   * The flow is atomic: if the profile row cannot be written, any freshly
+   * created auth user is rolled back so we never leave an orphaned account
+   * that later gets cleaned up and "disappears". Re-adding an existing empid
+   * relinks the profile (idempotent) instead of creating a duplicate.
    */
-  async function addEmployee(empid, name, role, dept, password, shiftCheckin = null, shiftCheckout = null) {
+  async function addEmployee(empid, name, role, dept, password, shiftCheckin = null, shiftCheckout = null, satPlan = 'every_saturday_work', sunPlan = 'two_sundays_work') {
+    const cleanEmpid = (empid || "").trim();
+    const cleanName = (name || "").trim();
+    const email = `${cleanEmpid}@caddtech.com`;
+
+    // Create a clean background client (so the HR admin isn't logged out)
+    const bgClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
+
+    let authUserId = null;
+    let createdNewAuthUser = false;
+
     try {
-      // Create a clean background client (so the HR admin isn't logged out)
-      const bgClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false }
-      });
-
-      const email = `${empid.trim()}@caddtech.com`;
-
-      // 1. Ensure the auth user exists
-      const { data, error } = await bgClient.auth.signUp({
+      // 1. Ensure the auth user exists (create or resolve).
+      const { data: signUpData, error: signUpError } = await bgClient.auth.signUp({
         email: email,
         password: password,
         options: {
           data: {
-            empid: empid.trim(),
-            name: name.trim(),
+            empid: cleanEmpid,
+            name: cleanName,
             role: role,
             department: dept
           }
         }
       });
 
-      let authUserId = null;
-
-      if (error) {
-        if (error.message.includes("User already registered")) {
+      if (signUpError) {
+        if (signUpError.message.includes("User already registered")) {
           // Auth account already exists — resolve its UUID without the password.
           try {
             const { data: rpcUid, error: rpcErr } = await supabaseClient.rpc('get_auth_user_id_by_empid', {
-              target_empid: empid.trim()
+              target_empid: cleanEmpid
             });
             if (!rpcErr && rpcUid) authUserId = rpcUid;
           } catch (e) {
@@ -176,27 +184,52 @@ const API = (() => {
               password: password,
             });
             if (signInError || !signInData?.user) {
-              throw new Error(`Employee ID ${empid} already has an account, but the password didn't match. Use the original password or reset it.`);
+              throw new Error(`Employee ID ${cleanEmpid} already has an account, but the password didn't match. Use the original password or reset it.`);
             }
             authUserId = signInData.user.id;
           }
         } else {
-          throw error;
+          throw signUpError;
         }
       } else {
-        authUserId = data.user.id;
+        authUserId = signUpData.user.id;
+        createdNewAuthUser = true;
       }
 
-      // 2. Create/update the profile row via a SECURITY DEFINER RPC (bypasses RLS)
-      await supabaseClient.rpc('create_employee_profile', {
+      if (!authUserId) {
+        throw new Error("Could not resolve the employee's auth account. Please try again.");
+      }
+
+      // 2. Create/update the profile row via a SECURITY DEFINER RPC (bypasses RLS).
+      //    Idempotent on the primary key, so re-adding relinks cleanly.
+      const { error: rpcError } = await supabaseClient.rpc('create_employee_profile', {
         p_id: authUserId,
-        p_empid: empid.trim(),
-        p_name: name.trim(),
+        p_empid: cleanEmpid,
+        p_name: cleanName,
         p_role: role,
         p_department: dept,
         p_shift_checkin: shiftCheckin || null,
-        p_shift_checkout: shiftCheckout || null
+        p_shift_checkout: shiftCheckout || null,
+        p_sat_plan: satPlan || 'every_saturday_work',
+        p_sun_plan: sunPlan || 'two_sundays_work'
       });
+
+      if (rpcError) {
+        // Roll back a freshly-created auth user so we don't leave an orphan
+        // that later gets cleaned up and "disappears".
+        if (createdNewAuthUser) {
+          await supabaseClient.rpc('delete_auth_user_by_empid', { target_empid: cleanEmpid }).catch(() => {});
+        }
+        throw rpcError;
+      }
+
+      // 3. Guarantee a staff_performance row (zero points) so the new hire
+      //    appears in the leaderboard / dashboard consistently.
+      try {
+        await ensureStaffPerformance(cleanEmpid, cleanName);
+      } catch (e) {
+        console.warn('[API] ensureStaffPerformance (onboard) failed:', e);
+      }
 
       return { user: { id: authUserId } };
     } catch (err) {
@@ -215,7 +248,9 @@ const API = (() => {
         p_empid: empid,
         p_department: updates.department ?? null,
         p_shift_checkin: updates.shiftCheckin ?? null,
-        p_shift_checkout: updates.shiftCheckout ?? null
+        p_shift_checkout: updates.shiftCheckout ?? null,
+        p_sat_plan: updates.satPlan ?? null,
+        p_sun_plan: updates.sunPlan ?? null
       });
       if (error) throw error;
       return true;
@@ -670,6 +705,26 @@ const API = (() => {
   }
 
   /**
+   * Ensure a staff_performance row exists for an employee (with zero points).
+   * Idempotent: does nothing if a row for that empid already exists.
+   * Used during onboarding and sync so every employee shows in the
+   * leaderboard / dashboard consistently.
+   */
+  async function ensureStaffPerformance(empid, staffName) {
+    try {
+      const { error } = await supabaseClient.rpc('ensure_staff_performance', {
+        p_empid: empid,
+        p_staff_name: staffName
+      });
+      if (error) throw error;
+      return true;
+    } catch (err) {
+      console.error('[API] ensureStaffPerformance Error:', err);
+      throw err;
+    }
+  }
+
+  /**
    * Call the RPC to add a new integer column to staff_performance (HR only)
    */
   async function addStaffPerformanceColumn(colName) {
@@ -923,6 +978,7 @@ const API = (() => {
     fetchStaffPerformance,
     updateStaffPerformance,
     createStaffPerformance,
+    ensureStaffPerformance,
     addStaffPerformanceColumn,
     dropStaffPerformanceColumn,
     deleteChatMessage,

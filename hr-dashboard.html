@@ -480,6 +480,26 @@
                       </div>
                     </div>
                   </div>
+                  <div class="add-emp-grid" id="ae-weekend-fields">
+                    <div class="add-emp-field">
+                      <label>Saturday Plan</label>
+                      <select id="ae-sat-plan" class="select">
+                        <option value="every_saturday_work" selected>Every Saturday Work</option>
+                        <option value="two_saturdays_work">Two Saturdays Work</option>
+                        <option value="wfh">WFH</option>
+                        <option value="holiday">Holiday</option>
+                      </select>
+                    </div>
+                    <div class="add-emp-field">
+                      <label>Sunday Plan</label>
+                      <select id="ae-sun-plan" class="select">
+                        <option value="two_sundays_work" selected>Two Sundays Work</option>
+                        <option value="every_sunday_work">Every Sunday Work</option>
+                        <option value="wfh">WFH</option>
+                        <option value="holiday">Holiday</option>
+                      </select>
+                    </div>
+                  </div>
                   <div id="ae-error" class="add-emp-error"></div>
                   <div id="ae-success" class="add-emp-success"></div>
                   <button type="submit" id="ae-submit-btn" class="btn primary" style="width:100%">
@@ -563,6 +583,26 @@
                     <option value="PM">PM</option>
                   </select>
                 </div>
+              </div>
+            </div>
+            <div class="form-row horizontal" style="gap:1rem" id="edit-emp-weekend-row">
+              <div class="form-group" style="flex:1">
+                <label class="label" for="edit-emp-sat-plan">Saturday Plan</label>
+                <select class="select" id="edit-emp-sat-plan">
+                  <option value="every_saturday_work">Every Saturday Work</option>
+                  <option value="two_saturdays_work">Two Saturdays Work</option>
+                  <option value="wfh">WFH</option>
+                  <option value="holiday">Holiday</option>
+                </select>
+              </div>
+              <div class="form-group" style="flex:1">
+                <label class="label" for="edit-emp-sun-plan">Sunday Plan</label>
+                <select class="select" id="edit-emp-sun-plan">
+                  <option value="two_sundays_work">Two Sundays Work</option>
+                  <option value="every_sunday_work">Every Sunday Work</option>
+                  <option value="wfh">WFH</option>
+                  <option value="holiday">Holiday</option>
+                </select>
               </div>
             </div>
             <div id="edit-emp-error" class="form-error" style="display:none"></div>
@@ -706,9 +746,9 @@
   <script src="js/session.js?v=9"></script>
   <script src="js/auth.js?v=7"></script>
   <script src="js/roleGuard.js?v=3"></script>
-  <script src="js/api.js?v=15"></script>
+  <script src="js/api.js?v=17"></script>
   <script src="data.js?v=3"></script>
-  <script src="app.js?v=34"></script>
+  <script src="app.js?v=39"></script>
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {

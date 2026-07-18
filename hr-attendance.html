@@ -213,9 +213,9 @@
   <script src="js/session.js?v=9"></script>
   <script src="js/auth.js?v=7"></script>
   <script src="js/roleGuard.js?v=3"></script>
-  <script src="js/api.js?v=14"></script>
+  <script src="js/api.js?v=17"></script>
   <script src="data.js?v=2"></script>
-  <script src="app.js?v=29"></script>
+  <script src="app.js?v=37"></script>
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
@@ -246,7 +246,9 @@
         department: p.department || 'Training',
         status: 'Active',
         shiftCheckin: p.shift_checkin || null,
-        shiftCheckout: p.shift_checkout || null
+        shiftCheckout: p.shift_checkout || null,
+        saturdayPlan: p.saturday_plan || 'every_saturday_work',
+        sundayPlan: p.sunday_plan || 'two_sundays_work'
       })));
 
       // Fetch this employee's attendance data

@@ -398,6 +398,12 @@ a { color: inherit; text-decoration: none; }
 .badge.leave {
   background: rgb(100 116 139 / 15%); color: #475569;
 }
+.badge.holiday {
+  background: rgb(168 85 247 / 14%); color: #7e22ce;
+}
+.badge.off {
+  background: rgb(148 163 184 / 14%); color: #64748b;
+}
 
 /* Buttons */
 .btn {
@@ -929,6 +935,8 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 .att-timeline-track.red { background: #ef4444; }
 .att-timeline-track.wfh { background: #6366f1; }
 .att-timeline-track.leave { background: #94a3b8; }
+.att-timeline-track.holiday { background: #a855f7; }
+.att-timeline-track.off { background: #cbd5e1; }
 .att-timeline-track.gray { background: #e5e7eb; }
 
 .att-timeline-dot {
@@ -944,6 +952,8 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 .att-timeline-dot.gray { background: #cbd5e1; }
 .att-timeline-dot.wfh { background: #6366f1; }
 .att-timeline-dot.leave { background: #64748b; }
+.att-timeline-dot.holiday { background: #a855f7; }
+.att-timeline-dot.off { background: #94a3b8; }
 .att-timeline-dot.open {
   background: #fff;
   border: 2px solid #f59e0b;
@@ -1268,6 +1278,22 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
   box-shadow: inset 3px 0 0 #64748b;
   background: #f1f5f9;
 }
+.att-cal-cell.cal-holiday {
+  box-shadow: inset 3px 0 0 #a855f7;
+  background: #faf5ff;
+}
+.att-cal-cell.cal-off {
+  box-shadow: inset 3px 0 0 #94a3b8;
+  background: #f8fafc;
+}
+.att-cal-cell.holiday {
+  box-shadow: inset 3px 0 0 #a855f7;
+  background: #faf5ff;
+}
+.att-cal-cell.off {
+  box-shadow: inset 3px 0 0 #94a3b8;
+  background: #f8fafc;
+}
 
 .att-cal-time {
   display: flex;
@@ -1293,6 +1319,16 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
   font-weight: 600;
   font-size: 0.95rem;
   color: #475569;
+}
+
+/* AM/PM label rendered with a smaller font so the numeric time stays
+   the same size, while remaining aligned and readable on desktop/mobile.
+   Uses em so it scales with the surrounding time font. */
+.att-cal-ampm {
+  font-size: 0.7em;
+  font-weight: 600;
+  margin-left: 0.12em;
+  letter-spacing: 0.01em;
 }
 
 .att-cal-legend {

@@ -66,7 +66,10 @@ function formatDate(d) {
 }
 
 function getEmployee(id) {
-  return employees.find((e) => e.id === id) || { id, name: "Employee " + id, role: "Employee", department: "Unknown" };
+  return employees.find((e) => e.id === id) || {
+    id, name: "Employee " + id, role: "Employee", department: "Unknown",
+    saturdayPlan: "every_saturday_work", sundayPlan: "two_sundays_work"
+  };
 }
 
 

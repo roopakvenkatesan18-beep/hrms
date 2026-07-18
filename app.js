@@ -99,6 +99,19 @@ function formatPunchTime(timeStr) {
   return API.formatTime(timeStr);
 }
 
+/* Render a displayed time ("09:42 AM") with the AM/PM label in a smaller
+   font while keeping the numeric time font size unchanged. Falls back to
+   escaping the raw text when there is no AM/PM suffix (e.g. "—"). */
+function timeWithAmPm(t) {
+  if (!t) return "";
+  const s = String(t).trim();
+  const m = s.match(/^(.*?)\s*(AM|PM)\s*$/i);
+  if (m) {
+    return `${escapeHtml(m[1])}<span class="att-cal-ampm">${m[2].toUpperCase()}</span>`;
+  }
+  return escapeHtml(s);
+}
+
 function timeToMinutes(h, m) { return h * 60 + m; }
 
 function parseAMPMTime(t) {
@@ -432,13 +445,18 @@ async function renderEmpManagement() {
         if (!shiftCheckin || !shiftCheckout) { errEl.textContent = 'Please enter shift check-in and check-out times for employees.'; return; }
       }
 
+      const satPlan = document.getElementById('ae-sat-plan')?.value || 'every_saturday_work';
+      const sunPlan = document.getElementById('ae-sun-plan')?.value || 'two_sundays_work';
+
       btn.disabled = true; btn.textContent = 'Creating…';
       try {
-        await API.addEmployee(empid, name, role, dept, pass, shiftCheckin, shiftCheckout);
+        await API.addEmployee(empid, name, role, dept, pass, shiftCheckin, shiftCheckout, satPlan, sunPlan);
         okEl.textContent = `✓ ${name} (ID: ${empid}) created! They can now log in.`;
         addForm.reset(); emailPreview.textContent = '—';
-        // Push into local employees array so directory updates
-        employees.push({ id: empid, name, role, department: dept, email: `${empid}@caddtech.com`, status: 'Active', shiftCheckin, shiftCheckout });
+        // Reload the employee list from Supabase so the new hire shows up
+        // consistently in the directory, attendance, performance, leave,
+        // travel and dashboard — instead of a partial local stub.
+        await syncEmployeesFromSupabase();
         // Refresh the profiles cache for the remove list
         _allProfiles = await API.fetchAllProfiles();
         renderRemoveList(document.getElementById('re-search')?.value || '');
@@ -555,6 +573,10 @@ function openEditEmployee(empid, name) {
     fillShiftInput(p.shift_checkin, 'edit-emp-shift-ci-t', 'edit-emp-shift-ci-ap');
     fillShiftInput(p.shift_checkout, 'edit-emp-shift-co-t', 'edit-emp-shift-co-ap');
   }
+  const satSel = document.getElementById('edit-emp-sat-plan');
+  const sunSel = document.getElementById('edit-emp-sun-plan');
+  if (satSel) satSel.value = p.saturday_plan || 'every_saturday_work';
+  if (sunSel) sunSel.value = p.sunday_plan || 'two_sundays_work';
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
 
   if (modal) modal.style.display = 'flex';
@@ -574,16 +596,21 @@ async function saveEditEmployee() {
     shiftCheckout = readShiftInput('edit-emp-shift-co-t', 'edit-emp-shift-co-ap');
   }
 
+  const satPlan = document.getElementById('edit-emp-sat-plan')?.value || 'every_saturday_work';
+  const sunPlan = document.getElementById('edit-emp-sun-plan')?.value || 'two_sundays_work';
+
   if (!department) { errEl.style.display = 'block'; errEl.textContent = 'Department is required.'; return; }
 
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    await API.updateEmployee(_editEmpId, { department, shiftCheckin, shiftCheckout });
-    // Update local caches
+    await API.updateEmployee(_editEmpId, { department, shiftCheckin, shiftCheckout, satPlan, sunPlan });
+    // Update local caches, then reload from DB so every view reflects the
+    // saved plan immediately (and confirms the write actually persisted).
     const prof = _allProfiles.find(x => x.empid === _editEmpId);
-    if (prof) { prof.department = department; prof.shift_checkin = shiftCheckin; prof.shift_checkout = shiftCheckout; }
+    if (prof) { prof.department = department; prof.shift_checkin = shiftCheckin; prof.shift_checkout = shiftCheckout; prof.saturday_plan = satPlan; prof.sunday_plan = sunPlan; }
     const emp = employees.find(x => x.id === _editEmpId);
-    if (emp) { emp.department = department; emp.shiftCheckin = shiftCheckin; emp.shiftCheckout = shiftCheckout; }
+    if (emp) { emp.department = department; emp.shiftCheckin = shiftCheckin; emp.shiftCheckout = shiftCheckout; emp.saturdayPlan = satPlan; emp.sundayPlan = sunPlan; }
+    try { await syncEmployeesFromSupabase(); } catch (e) { console.warn('reload after edit failed', e); }
     const modal = document.getElementById('edit-emp-modal');
     if (modal) modal.style.display = 'none';
     renderRemoveList(document.getElementById('re-search')?.value || '');
@@ -710,7 +737,7 @@ function getPieData() {
     if (st === "Present WFH") wfh++;
     else if (st === "Present") present++;
     else if (st === "Late") late++;
-    else if (st === "Leave") leave++;
+    else if (st === "Leave" || st === "Holiday" || st === "Off") leave++;
     else absent++;
   };
 
@@ -781,6 +808,13 @@ function renderPieChart() {
   ).join("");
 }
 
+/* Format an ISO date string (YYYY-MM-DD) as DD/M for compact axis labels */
+function shortDateLabel(dateStr) {
+  const parts = String(dateStr).split("-");
+  if (parts.length < 3) return dateStr;
+  return `${parseInt(parts[2], 10)}/${parseInt(parts[1], 10)}`;
+}
+
 function getHoursData() {
   const data = [];
   const colors = [];
@@ -802,31 +836,18 @@ function getHoursData() {
     if (res.status === "Present WFH") {
       // Purple bar for Work From Home, using the employee-provided times
       color = "#6366f1";
-      if (res.checkIn && res.checkOut) {
-        const inH = parse24hTime(res.checkIn);
-        const outH = parse24hTime(res.checkOut);
-        if (inH && outH && (outH.h * 60 + outH.m) > (inH.h * 60 + inH.m)) {
-          hours = (outH.h * 60 + outH.m - (inH.h * 60 + inH.m)) / 60;
-        }
-      }
+      hours = computeWorkedHours(res.checkIn, res.checkOut, res.punches);
     } else if (res.record) {
-      const rec = res.record;
-      if (rec.overtime !== undefined && rec.overtime > 0) {
-        hours = rec.overtime;
-      } else if (res.checkIn && res.checkOut && res.checkIn !== "--:--" && res.checkOut !== "--:--" && res.checkIn !== "12:00 AM") {
-        const inH = timeStrToHours(res.checkIn);
-        const outH = timeStrToHours(res.checkOut);
-        if (outH > inH) hours = outH - inH;
-      }
+      hours = computeWorkedHours(res.checkIn, res.checkOut, res.punches);
     }
 
-    data.push({ date: dateStr.slice(5), hours: Number(hours.toFixed(1)) });
+    data.push({ date: shortDateLabel(dateStr), hours: Number(hours.toFixed(1)) });
     colors.push(color);
   }
 
   // If no data exists at all, just provide a dummy empty state so the chart doesn't crash
   if (data.length === 0) {
-    data.push({ date: iso(today).slice(5), hours: 0 });
+    data.push({ date: shortDateLabel(iso(today)), hours: 0 });
     colors.push("#3b82f6");
   }
 
@@ -1080,7 +1101,20 @@ function renderDirectory() {
     return matchQ && (dept === "all" || e.department === dept);
   });
 
-  document.getElementById("employee-grid").innerHTML = filtered.map(emp => `
+  // Employee users get a privacy-adjusted directory: other employees' phone
+  // numbers are hidden and the location field is replaced by branch. HR (admin)
+  // keeps the full, unchanged view.
+  const isEmployee = state.role === "employee";
+  const viewerId = window.CURRENT_USER_ID;
+
+  document.getElementById("employee-grid").innerHTML = filtered.map(emp => {
+    const isSelf = emp.id === viewerId;
+    const showPhone = !isEmployee || isSelf;
+    const locValue = isEmployee ? (emp.branch || "—") : (emp.location || "—");
+    const phoneLine = showPhone
+      ? `<div class="meta-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1rem;height:1rem"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>${escapeHtml(emp.phone || "—")}</span></div>`
+      : "";
+    return `
     <div class="card employee-card" data-emp-id="${emp.id}">
       <div class="employee-card-head">
         ${avatarHTML(emp.name, "lg")}
@@ -1091,11 +1125,12 @@ function renderDirectory() {
       </div>
       <div class="divider"></div>
       <div class="meta-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1rem;height:1rem"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg><span>${escapeHtml(emp.department)}</span></div>
-      <div class="meta-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1rem;height:1rem"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>${escapeHtml(emp.location)}</span></div>
-      <div class="meta-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1rem;height:1rem"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>${escapeHtml(emp.phone)}</span></div>
+      <div class="meta-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1rem;height:1rem"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><span>${escapeHtml(locValue)}</span></div>
+      ${phoneLine}
       <div style="margin-top:1rem">${badgeHTML(emp.status)}</div>
     </div>
-  `).join("");
+  `;
+  }).join("");
 
   // Click handlers for employee cards
   document.querySelectorAll(".employee-card[data-emp-id]").forEach(card => {
@@ -1106,15 +1141,22 @@ function renderDirectory() {
 function openEmployeeModal(empId) {
   const emp = getEmployee(empId);
   if (!emp) return;
+  const isEmployee = state.role === "employee";
+  const isSelf = emp.id === window.CURRENT_USER_ID;
+  const showPhone = !isEmployee || isSelf;
+  const locValue = isEmployee ? (emp.branch || "—") : (emp.location || "—");
+
   document.getElementById("modal-avatar").textContent = getInitials(emp.name);
   document.getElementById("modal-name").textContent = emp.name;
   document.getElementById("modal-title").textContent = emp.title;
   document.getElementById("modal-badge").innerHTML = badgeHTML(emp.status);
   document.getElementById("modal-about").textContent = emp.about;
   document.getElementById("modal-email").textContent = emp.email;
-  document.getElementById("modal-phone").textContent = emp.phone;
+  document.getElementById("modal-phone").textContent = showPhone ? (emp.phone || "—") : "—";
   document.getElementById("modal-dept").textContent = emp.department;
-  document.getElementById("modal-location").textContent = emp.location;
+  document.getElementById("modal-location").textContent = locValue;
+  const locLabel = document.getElementById("modal-location").previousElementSibling;
+  if (locLabel) locLabel.textContent = isEmployee ? "Branch" : "Location";
   document.getElementById("modal-joined").textContent = formatDate(emp.joinDate);
   document.getElementById("modal-employment").textContent = emp.employmentType;
   document.getElementById("modal-manager").textContent = emp.manager;
@@ -1211,7 +1253,7 @@ function renderAttendanceAdmin() {
             <td>${row.checkIn}</td>
             <td>${row.checkOut}</td>
             <td>
-              <span class="badge ${row.overtime > 0 ? 'warning' : 'success'}">${row.overtime} hrs</span>
+              <span class="badge ${computeWorkedHours(row.checkIn, row.checkOut, row.punches) > 0 ? 'warning' : 'success'}">${computeWorkedHours(row.checkIn, row.checkOut, row.punches)} hrs</span>
             </td>
           </tr>
         `;
@@ -1262,6 +1304,18 @@ function renderAttendanceEmployee() {
       checkInStr = "—";
       checkOutStr = "—";
       endDotClass = "leave";
+    } else if (res.status === "Holiday") {
+      status = "holiday";
+      statusLabel = "Holiday";
+      checkInStr = "—";
+      checkOutStr = "—";
+      endDotClass = "holiday";
+    } else if (res.status === "Off") {
+      status = "off";
+      statusLabel = "Off";
+      checkInStr = "—";
+      checkOutStr = "—";
+      endDotClass = "off";
     } else if (record) {
       const ci = record.checkIn;
       const co = record.checkOut;
@@ -1331,7 +1385,7 @@ function renderAttendanceEmployee() {
             <td>${row.checkIn}</td>
             <td>${row.checkOut}</td>
             <td>
-              <span class="badge ${row.overtime > 0 ? 'warning' : 'success'}">${row.overtime} hrs</span>
+              <span class="badge ${computeWorkedHours(row.checkIn, row.checkOut, row.punches) > 0 ? 'warning' : 'success'}">${computeWorkedHours(row.checkIn, row.checkOut, row.punches)} hrs</span>
             </td>
           </tr>
         `;
@@ -1375,6 +1429,14 @@ function renderAttendanceTable() {
 function renderSundayLeaveInfo() {
   const el = document.getElementById("sunday-leave-info");
   if (!el) return;
+
+  // Only employees on the "Two Sundays Work" Sunday plan get a Sunday-leave
+  // allowance. Others (every Sunday work / WFH / holiday) have no such cap.
+  const me = getEmployee(CURRENT_USER_ID);
+  if ((me.sundayPlan || "two_sundays_work") !== "two_sundays_work") {
+    el.style.display = "none";
+    return;
+  }
 
   const now = new Date();
   const year = now.getFullYear();
@@ -1471,6 +1533,12 @@ function renderAttendanceCalendar() {
       statusClass = "leave";
       statusText = "Leave";
       leaveCount++;
+    } else if (res.status === "Holiday") {
+      statusClass = "holiday";
+      statusText = "Holiday";
+    } else if (res.status === "Off") {
+      statusClass = "off";
+      statusText = "Off";
     } else if (record) {
       const hasCI = record.checkIn && record.checkIn !== "--:--" && record.checkIn !== "12:00 AM" && record.checkIn !== "Invalid Date";
       const hasCO = record.checkOut && record.checkOut !== "--:--" && record.checkOut !== "12:00 AM" && record.checkOut !== "Invalid Date";
@@ -1495,7 +1563,7 @@ function renderAttendanceCalendar() {
           <span class="att-cal-date">${day}</span>
           ${statusText ? `<span class="att-cal-badge ${statusClass}">${statusText}</span>` : ""}
         </div>
-        ${checkInStr ? `<div class="att-cal-time"><span class="att-cal-checkin">${checkInStr}</span><span class="att-cal-sep">→</span><span class="att-cal-checkout">${checkOutStr}</span></div>` : ""}
+        ${checkInStr ? `<div class="att-cal-time"><span class="att-cal-checkin">${timeWithAmPm(checkInStr)}</span><span class="att-cal-sep">→</span><span class="att-cal-checkout">${timeWithAmPm(checkOutStr)}</span></div>` : ""}
       </div>
     `;
   }
@@ -3100,6 +3168,38 @@ function hoursBetween(ci, co) {
   return Math.round((mins / 60) * 10) / 10;
 }
 
+/* Global, database-independent total worked-hours calculator.
+   Given a day's check-in, check-out and optional punch sessions, returns
+   the total hours worked. It NEVER reads a stored summary/overtime value
+   from Supabase (work_ot) — it derives hours purely from the times.
+
+   - Multiple punch sessions: every completed session (both in & out
+     present, out after in) is summed — this is the "smart" total.
+   - Otherwise it falls back to the single check-in / check-out pair.
+   Handles both 12h ("09:42 AM") and 24h ("21:30:00") time strings. */
+function computeWorkedHours(checkIn, checkOut, punches) {
+  let total = 0;
+  let usedSessions = false;
+  const sessions = Array.isArray(punches) ? punches : [];
+  for (const p of sessions) {
+    const inM = parseAnyTime(p && p.in);
+    const outM = parseAnyTime(p && p.out);
+    if (inM && outM) {
+      const mins = (outM.h * 60 + outM.m) - (inM.h * 60 + inM.m);
+      if (mins > 0) { total += mins / 60; usedSessions = true; }
+    }
+  }
+  if (usedSessions) return Math.round(total * 10) / 10;
+
+  const ci = parseAnyTime(checkIn);
+  const co = parseAnyTime(checkOut);
+  if (ci && co) {
+    const mins = (co.h * 60 + co.m) - (ci.h * 60 + ci.m);
+    if (mins > 0) return Math.round((mins / 60) * 10) / 10;
+  }
+  return 0;
+}
+
 function isValidCheckIn(t) {
   return t && t !== "--:--" && t !== "12:00 AM" && t !== "Invalid Date" && t !== "00:00:00";
 }
@@ -3182,36 +3282,93 @@ function getSundayLeaveForDate(empid, dateStr) {
   ) || { status: "Approved" };
 }
 
+/* Return the first N occurrences of a given weekday (0=Sun..6=Sat) in a month
+   as ISO date strings. Used to pick the "working" weekends for the
+   "two Saturdays / two Sundays" plans. */
+function getFirstNWeekendDays(year, month, dow, n) {
+  const out = [];
+  const dim = new Date(year, month + 1, 0).getDate();
+  for (let d = 1; d <= dim && out.length < n; d++) {
+    const dt = new Date(year, month, d);
+    if (dt.getDay() === dow) out.push(iso(dt));
+  }
+  return out;
+}
+
+/* Resolve the weekend-plan mode for an employee/date.
+   Returns: 'work' | 'wfh' | 'holiday' | 'off' | null (null = not a weekend). */
+function getWeekendPlanMode(empid, dateStr) {
+  const d = new Date(dateStr);
+  const dow = d.getDay(); // 0=Sun, 6=Sat
+  if (dow !== 0 && dow !== 6) return null;
+  const emp = getEmployee(empid);
+  const plan = dow === 6
+    ? (emp.saturdayPlan || 'every_saturday_work')
+    : (emp.sundayPlan || 'two_sundays_work');
+
+  if (plan === 'every_saturday_work' || plan === 'every_sunday_work') return 'work';
+  if (plan === 'wfh') return 'wfh';
+  if (plan === 'holiday') return 'holiday';
+  if (plan === 'two_saturdays_work' || plan === 'two_sundays_work') {
+    // Any two weekend-days in the month are working (first two of the month);
+    // the remaining ones are simply off (not holidays, not workdays).
+    const firstTwo = getFirstNWeekendDays(d.getFullYear(), d.getMonth(), dow, 2);
+    return firstTwo.includes(dateStr) ? 'work' : 'off';
+  }
+  return 'work';
+}
+
 function resolveAttendance(empid, dateStr) {
   const record = getAttendanceRecordForDate(empid, dateStr);
+  const wfh = getWfhRequestForDate(empid, dateStr);
   let status = "Absent";
   let checkIn = null, checkOut = null, overtime = 0, punches = [];
+
+  // A real scraped check-in ALWAYS overrides any scheduled plan (holiday,
+  // WFH, etc.) — an employee who actually works shows as Present/Late.
+  const hasRealData = !!(record && isValidCheckIn(record.checkIn));
 
   if (record) {
     checkIn = record.checkIn || null;
     checkOut = record.checkOut || null;
     overtime = record.overtime;
     punches = Array.isArray(record.punches) ? record.punches : [];
-    const hasCI = isValidCheckIn(checkIn);
-    status = !hasCI ? "Absent" : (record.status === "Late" ? "Late" : "Present");
   }
 
-  const wfh = getWfhRequestForDate(empid, dateStr);
-  if (wfh) {
+  if (hasRealData) {
+    status = (record.status === "Late") ? "Late" : "Present";
+  } else if (wfh) {
     status = "Present WFH";
     // Use the employee-provided WFH check-in / check-out times when present
     if (wfh.fromTime) checkIn = wfh.fromTime;
     if (wfh.toTime) checkOut = wfh.toTime;
-  }
-
-  // An approved Sunday leave fills in an otherwise-absent Sunday as "Leave"
-  if (status === "Absent") {
-    const sunLeave = getSundayLeaveForDate(empid, dateStr);
-    if (sunLeave) {
-      status = "Leave";
+  } else {
+    const planMode = getWeekendPlanMode(empid, dateStr);
+    if (planMode === 'holiday') {
+      status = "Holiday";
       checkIn = null;
       checkOut = null;
+    } else if (planMode === 'wfh') {
+      status = "Present WFH";
+      checkIn = null;
+      checkOut = null;
+    } else if (planMode === 'off') {
+      status = "Off";
+      checkIn = null;
+      checkOut = null;
+    } else {
+      status = "Absent";
     }
+
+    // An approved Sunday leave fills in an otherwise-absent Sunday as "Leave"
+    if (status === "Absent") {
+      const sunLeave = getSundayLeaveForDate(empid, dateStr);
+      if (sunLeave) {
+        status = "Leave";
+        checkIn = null;
+        checkOut = null;
+    }
+  }
   }
 
   return { record, status, checkIn, checkOut, overtime, punches, wfh, leave: status === "Leave" ? sunLeave : null };
@@ -3239,16 +3396,14 @@ function computeMonthDayRecords(empid, year, month) {
       : res.status === "Late" ? "late"
       : res.status === "Present" ? "present"
       : res.status === "Leave" ? "leave"
+      : res.status === "Holiday" ? "holiday"
+      : res.status === "Off" ? "off"
       : "absent";
     let hours = 0;
     const punches = res.punches;
 
-    if (hasCI && status !== "wfh" && status !== "leave") {
-      if (r.overtime && Number(r.overtime) > 0) {
-        hours = Number(r.overtime);
-      } else if (hasCO) {
-        hours = hoursBetween(ci, co);
-      }
+    if (hasCI && status !== "wfh" && status !== "leave" && status !== "holiday" && status !== "off") {
+      hours = computeWorkedHours(ci, co, punches);
     }
 
     records.push({
@@ -3272,6 +3427,8 @@ function computeMonthStats(empid, year, month) {
       absent++;
     } else if (r.status === "leave") {
       leave++;
+    } else if (r.status === "holiday" || r.status === "off") {
+      // Scheduled non-working weekend — not counted as present or absent.
     } else {
       if (r.status === "late") late++;
       present++;
@@ -3306,16 +3463,14 @@ function buildDayRecordsForDates(empid, dates) {
       : res.status === "Late" ? "late"
       : res.status === "Present" ? "present"
       : res.status === "Leave" ? "leave"
+      : res.status === "Holiday" ? "holiday"
+      : res.status === "Off" ? "off"
       : "absent";
     let hours = 0;
     const punches = res.punches;
 
-    if (hasCI && status !== "wfh" && status !== "leave") {
-      if (r.overtime && Number(r.overtime) > 0) {
-        hours = Number(r.overtime);
-      } else if (hasCO) {
-        hours = hoursBetween(ci, co);
-      }
+    if (hasCI && status !== "wfh" && status !== "leave" && status !== "holiday" && status !== "off") {
+      hours = computeWorkedHours(ci, co, punches);
     }
 
     return {
@@ -3347,14 +3502,20 @@ function dayRecordsTableHTML(recs) {
       ? '<span class="badge present-wfh">Present WFH</span>'
       : r.status === "leave"
       ? '<span class="badge leave">Leave</span>'
+      : r.status === "holiday"
+      ? '<span class="badge holiday">Holiday</span>'
+      : r.status === "off"
+      ? '<span class="badge off">Off</span>'
       : '<span class="badge success">Present</span>';
+
+    const showHours = !(r.status === "absent" || r.status === "wfh" || r.status === "leave" || r.status === "holiday" || r.status === "off");
 
     return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
       <td>${r.checkIn || "—"}</td>
       <td>${r.checkOut || "—"}</td>
       <td>${punchHTML}</td>
-      <td>${r.status === "absent" || r.status === "wfh" || r.status === "leave" ? "—" : r.hours + "h"}</td>
+      <td>${showHours ? r.hours + "h" : "—"}</td>
     </tr>`;
   }).join("");
 }
@@ -3622,6 +3783,12 @@ function renderAnalyticsCalendar(empid, year, month) {
       statusClass = "cal-leave";
       statusText = "Leave";
       leaveCount++;
+    } else if (res.status === "Holiday") {
+      statusClass = "cal-holiday";
+      statusText = "Holiday";
+    } else if (res.status === "Off") {
+      statusClass = "cal-off";
+      statusText = "Off";
     } else {
       const hasCI = r && isValidCheckIn(r.checkIn);
       const hasCO = r && isValidCheckIn(r.checkOut);
@@ -3647,7 +3814,7 @@ function renderAnalyticsCalendar(empid, year, month) {
           <span class="att-cal-date">${day}</span>
           ${statusText ? `<span class="att-cal-badge ${statusClass.replace('cal-', '')}">${statusText}</span>` : ""}
         </div>
-        ${checkInStr ? `<div class="att-cal-time"><span class="att-cal-checkin">${checkInStr}</span><span class="att-cal-sep">→</span><span class="att-cal-checkout">${checkOutStr}</span></div>` : ""}
+        ${checkInStr ? `<div class="att-cal-time"><span class="att-cal-checkin">${timeWithAmPm(checkInStr)}</span><span class="att-cal-sep">→</span><span class="att-cal-checkout">${timeWithAmPm(checkOutStr)}</span></div>` : ""}
       </div>`;
   }
 
@@ -3762,12 +3929,22 @@ async function syncEmployeesFromSupabase() {
         status: mock ? mock.status : 'Active',
         about: det.description || mock?.about || 'Employee profile stored in system.',
         shiftCheckin: p.shift_checkin || null,
-        shiftCheckout: p.shift_checkout || null
+        shiftCheckout: p.shift_checkout || null,
+        saturdayPlan: p.saturday_plan || 'every_saturday_work',
+        sundayPlan: p.sunday_plan || 'two_sundays_work'
       };
     });
 
     employees.length = 0;
     employees.push(...syncedList);
+
+    // Guarantee every employee has a staff_performance row (zero points) so
+    // they appear in the leaderboard / dashboard consistently. Idempotent
+    // per empid, so safe to run on every sync and backfills existing staff
+    // (e.g. an employee that was in auth but never got a performance row).
+    await Promise.all(
+      profiles.map(p => API.ensureStaffPerformance(p.empid, p.name).catch(() => {}))
+    );
   } catch (err) {
     console.error("Failed to sync employees from database:", err);
   }
