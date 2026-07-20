@@ -1,0 +1,8 @@
+# Docs and unwanted files
+*.docx
+~$*
+*.tmp
+
+# Editor / cache
+.vscode/
+.ruff_cache/
