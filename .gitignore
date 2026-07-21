@@ -6,3 +6,6 @@
 # Editor / cache
 .vscode/
 .ruff_cache/
+
+# DB migration scripts (not needed for deployment)
+setup/
