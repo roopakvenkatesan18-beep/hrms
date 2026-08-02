@@ -889,7 +889,7 @@ function renderHoursChart() {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      indexAxis: isBar ? "y" : "x",
+      indexAxis: "x",
       plugins: {
         legend: { display: false },
         tooltip: {
@@ -3168,19 +3168,24 @@ function renderChat() {
       await loadActiveMessages();
       renderChat();
       updateChatNavUnread();
+      // On mobile, switch to the chat main panel
+      showChatMainPanel();
     });
   });
 
   // Render message area
   const active = state.chatConvs.find(c => c.participantUuid === state.activeContactUuid);
   const headerEl = document.getElementById('chat-partner-header');
+  const partnerNameEl = document.getElementById('chat-partner-name');
   const msgEl = document.getElementById('chat-messages');
   const inputRow = document.getElementById('chat-input-row');
 
   if (active) {
     if (headerEl) { 
-      headerEl.textContent = active.participantName; 
-      headerEl.style.display = 'block'; 
+      headerEl.style.display = 'flex'; 
+    }
+    if (partnerNameEl) {
+      partnerNameEl.textContent = active.participantName;
     }
     if (inputRow) inputRow.style.display = 'flex';
     if (msgEl) {
@@ -3251,8 +3256,43 @@ function renderChat() {
     if (headerEl) headerEl.style.display = 'none';
     if (inputRow) inputRow.style.display = 'none';
     if (msgEl) msgEl.innerHTML = `<div class="empty-state">Select a conversation</div>`;
+    // On mobile, show the sidebar panel
+    showChatSidebarPanel();
   }
 }
+
+// Mobile chat panel switching helpers
+function showChatMainPanel() {
+  const sidebar = document.getElementById('chat-sidebar-panel');
+  const main = document.getElementById('chat-main-panel');
+  if (window.innerWidth <= 640) {
+    if (sidebar) sidebar.style.display = 'none';
+    if (main) main.classList.add('active');
+  }
+}
+
+function showChatSidebarPanel() {
+  const sidebar = document.getElementById('chat-sidebar-panel');
+  const main = document.getElementById('chat-main-panel');
+  if (window.innerWidth <= 640) {
+    if (sidebar) sidebar.style.display = 'flex';
+    if (main) main.classList.remove('active');
+  }
+}
+
+// Bind chat back button (mobile)
+document.addEventListener('DOMContentLoaded', () => {
+  const backBtn = document.getElementById('chat-back-btn');
+  if (backBtn) {
+    backBtn.addEventListener('click', () => {
+      state.activeContactUuid = null;
+      state.activeConversationId = null;
+      state.chatMessages = [];
+      renderChat();
+      showChatSidebarPanel();
+    });
+  }
+});
 
 // Show/hide the Team Chat nav red dot based on any unread conversation
 function updateChatNavUnread() {
@@ -3834,7 +3874,7 @@ function initAnalytics() {
 function selectAnalyticsEmployee(empid) {
   state.analytics.selectedEmpId = empid;
   state.analytics.monthIndex = 0;
-  state.analytics.view = "statistics";
+  state.analytics.view = "calendar";
   const detail = document.getElementById("analytics-detail");
   if (detail) detail.style.display = "block";
   renderAnalyticsDetail();
@@ -3858,7 +3898,7 @@ function renderAnalyticsDetail() {
   const tabsEl = document.getElementById("analytics-month-tabs");
   if (tabsEl) {
     tabsEl.innerHTML = months.map((m, i) => {
-      const label = `${MONTH_NAMES[m.month]} ${String(m.year).slice(2)}`;
+      const label = `${MONTH_NAMES[m.month]}`;
       return `<button class="month-tab ${i === state.analytics.monthIndex ? 'active' : ''}" data-month-index="${i}">${label}</button>`;
     }).join("");
     tabsEl.querySelectorAll(".month-tab").forEach(btn => {
@@ -4371,4 +4411,14 @@ async function saveProfile(e) {
     saveBtn.disabled = false;
     saveText.textContent = "Save Changes";
   }
+}
+
+/* ---------- Profile Change Password ----------
+   Password changes are now handled on the dedicated change-password.html page.
+   The profile page redirects users there with a button. This function is kept
+   as a no-op fallback for any legacy references. */
+async function handleProfileChangePassword(e) {
+  e.preventDefault();
+  // Redirect to the dedicated change password page
+  window.location.href = 'change-password.html';
 }

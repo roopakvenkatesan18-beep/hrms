@@ -531,23 +531,21 @@ a { color: inherit; text-decoration: none; }
 
 .search-wrap .input { padding-left: 2.25rem; }
 
-/* Employee grid */
+/* Employee grid — consistent card sizing (no stretched last-row items) */
 .employee-grid {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 1rem;
 }
-
-.employee-grid > * { flex: 1 1 100%; }
-
-@media (min-width: 640px) { .employee-grid > * { flex: 1 1 calc(50% - 0.5rem); max-width: calc(50% - 0.5rem); } }
-@media (min-width: 1024px) { .employee-grid > * { flex: 1 1 calc(33.333% - 0.667rem); max-width: calc(33.333% - 0.667rem); } }
-@media (min-width: 1280px) { .employee-grid > * { flex: 1 1 calc(25% - 0.75rem); max-width: calc(25% - 0.75rem); } }
 
 .employee-card {
   padding: 1.25rem;
   cursor: pointer;
   transition: box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+  height: 100%;
 }
 
 .employee-card:hover { box-shadow: var(--shadow-md); }
@@ -1749,8 +1747,7 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
   .btn.sm { padding: 0.375rem 0.625rem; font-size: 0.75rem; min-height: 36px; }
   .input, .select { padding: 0.5rem 0.625rem; font-size: 0.8125rem; min-height: 40px; }
   .search-wrap .input { padding-left: 2rem; }
-  .employee-grid { gap: 0.75rem; }
-  .employee-grid > * { flex: 1 1 100%; max-width: 100%; }
+  .employee-grid { gap: 0.75rem; grid-template-columns: 1fr; }
   .employee-card { padding: 1rem; }
   .form-row.horizontal { flex-direction: column; }
   .form-row.horizontal .search-wrap { max-width: 100%; }
@@ -1876,13 +1873,9 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
   .employee-card-head { flex-wrap: wrap; }
 }
 
-@media (min-width: 1025px) {
-  .employee-grid > * { flex: 1 1 calc(25% - 0.75rem); max-width: calc(25% - 0.75rem); }
-}
-
-@media (min-width: 1280px) {
-  .employee-grid > * { flex: 1 1 calc(20% - 0.8rem); max-width: calc(20% - 0.8rem); }
-}
+/* Employee grid uses CSS Grid (see .employee-grid rule above).
+   These breakpoints are kept for reference — the grid auto-fills
+   columns based on minmax(220px, 1fr), so no extra rules needed. */
 
 @media (hover: none) and (pointer: coarse) {
   .nav-item:hover { background: transparent; }
@@ -2438,3 +2431,996 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 .notif-body { font-size: 0.78rem; color: var(--muted-foreground); margin-top: 2px; }
 .notif-time { font-size: 0.7rem; color: var(--muted-foreground); margin-top: 4px; }
 .notif-empty { padding: 1.25rem; text-align: center; color: var(--muted-foreground); font-size: 0.85rem; }
+
+/* ============================================================
+   ENHANCED RESPONSIVE — FLEXBOX-FIRST
+   ============================================================ */
+
+/* ---------- Chat: Mobile-first two-panel (WhatsApp-style) ---------- */
+.chat-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8rem);
+  min-height: 420px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Mobile: show only one panel at a time */
+.chat-sidebar {
+  width: 100%;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Mobile: hide main by default, show when a conversation is active */
+.chat-main {
+  display: none;
+}
+.chat-main.active {
+  display: flex;
+}
+
+/* Mobile back button */
+.chat-back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: 0.375rem;
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.chat-back-btn:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.chat-back-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Chat partner header with back button */
+.chat-partner-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* Chat messages area — ensure it scrolls properly */
+.chat-messages {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Chat input row — always at bottom */
+.chat-input-row {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--card);
+}
+
+/* Chat conversations list — scrollable */
+#chat-conversations {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- Tablet (641px - 1024px): side-by-side with flexible widths ---------- */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .chat-layout {
+    flex-direction: row;
+    height: calc(100vh - 8rem);
+  }
+  .chat-sidebar {
+    width: 40%;
+    max-width: 20rem;
+    min-width: 14rem;
+    flex: 0 0 40%;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    display: flex;
+  }
+  .chat-main {
+    display: flex;
+    flex: 1 1 60%;
+    min-width: 0;
+  }
+  .chat-back-btn {
+    display: none;
+  }
+}
+
+/* ---------- Desktop (1025px+): fixed sidebar width ---------- */
+@media (min-width: 1025px) {
+  .chat-layout {
+    flex-direction: row;
+    height: calc(100vh - 8rem);
+  }
+  .chat-sidebar {
+    width: 18rem;
+    flex: 0 0 18rem;
+    border-right: 1px solid var(--border);
+    border-bottom: none;
+    display: flex;
+  }
+  .chat-main {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .chat-back-btn {
+    display: none;
+  }
+}
+
+/* ---------- Small mobile (< 480px): tighter chat ---------- */
+@media (max-width: 480px) {
+  .chat-layout {
+    height: calc(100vh - 6.5rem);
+    min-height: 380px;
+  }
+  .chat-messages {
+    padding: 0.625rem;
+    gap: 0.5rem;
+  }
+  .chat-bubble {
+    max-width: 88%;
+    font-size: 0.8125rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .chat-input-row {
+    padding: 0.5rem;
+    gap: 0.375rem;
+  }
+  .chat-input-row .input {
+    min-height: 38px;
+    font-size: 0.8125rem;
+  }
+  .chat-input-row .btn {
+    min-height: 38px;
+    padding: 0.375rem 0.625rem;
+  }
+  .chat-conv-btn {
+    padding: 0.625rem 0.75rem;
+  }
+  .chat-conv-name {
+    font-size: 0.8125rem;
+  }
+  .chat-conv-msg {
+    font-size: 0.75rem;
+  }
+}
+
+/* ---------- Global Flexbox responsive improvements ---------- */
+
+/* Topbar: ensure it never overflows on small screens */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-shrink: 1;
+}
+
+/* Content: prevent horizontal overflow */
+.content {
+  flex: 1;
+  padding: 1rem;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* Cards: ensure they don't overflow */
+.card {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Grid layouts: use Flexbox with proper wrapping */
+.grid-2, .grid-3, .stats-grid {
+  display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.grid-2 > *, .grid-3 > *, .stats-grid > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Forms: prevent overflow */
+.leave-form, .form-row, .add-emp-form {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.leave-form > *, .form-row > *, .add-emp-form > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Tables: ensure horizontal scroll works properly */
+.table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+/* Modal: ensure it fits on small screens */
+.modal {
+  max-width: 32rem;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: 0 auto;
+}
+
+/* Attendance calendar: prevent overflow */
+.att-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* Schedule form: ensure inputs don't overflow */
+.schedule-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.schedule-time-group, .schedule-name-group {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Profile form: ensure it fits */
+#profile-form, #profile-change-password-form {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ---------- Tablet (641px - 1024px) improvements ---------- */
+@media (min-width: 641px) and (max-width: 1024px) {
+  .content {
+    padding: 1.25rem 1.5rem;
+  }
+  
+  .grid-2 > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .stats-grid.cols-4 > * {
+    flex: 1 1 calc(50% - 0.5rem);
+    max-width: calc(50% - 0.5rem);
+  }
+  
+  .stats-grid.cols-3 > * {
+    flex: 1 1 calc(50% - 0.5rem);
+    max-width: calc(50% - 0.5rem);
+  }
+  
+  .employee-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .emp-dash-section {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .emp-dash-section > * {
+    flex: 1 1 calc(50% - 0.75rem);
+    max-width: calc(50% - 0.75rem);
+  }
+  
+  .emp-dash-section > *:first-child {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .topbar-title {
+    font-size: 0.8125rem;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  
+  .att-top-bar {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  
+  .att-top-left {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  
+  .att-top-right {
+    flex: 0 1 auto;
+  }
+}
+
+/* ---------- Small mobile (< 640px) improvements ---------- */
+@media (max-width: 640px) {
+  .content {
+    padding: 0.75rem;
+  }
+  
+  .emp-dash-section {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .emp-dash-section > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .grid-2, .grid-3 {
+    gap: 1rem;
+  }
+  
+  .grid-2 > *, .grid-3 > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .stats-grid {
+    gap: 0.75rem;
+  }
+  
+  .stats-grid > * {
+    flex: 1 1 calc(50% - 0.375rem);
+    max-width: calc(50% - 0.375rem);
+  }
+  
+  .stats-grid.cols-3 > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .employee-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+  
+  .topbar {
+    padding: 0.625rem 0.75rem;
+  }
+  
+  .topbar-title {
+    display: none;
+  }
+  
+  .user-info-chip {
+    padding: 0.2rem 0.5rem 0.2rem 0.2rem;
+  }
+  
+  .user-info-chip #user-name {
+    max-width: 4.5rem;
+  }
+  
+  .logout-btn .logout-text {
+    display: none;
+  }
+  
+  .logout-btn {
+    padding: 0.375rem;
+  }
+  
+  .att-top-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .att-top-left {
+    flex-direction: column;
+    align-items: stretch;
+    min-width: 0;
+  }
+  
+  .att-top-right {
+    display: flex;
+    justify-content: flex-end;
+  }
+  
+  .view-toggle {
+    width: 100%;
+  }
+  
+  .view-toggle button {
+    flex: 1 1 0;
+  }
+  
+  .att-cal-nav {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .att-cal-nav-center {
+    order: -1;
+    flex: 1 1 100%;
+  }
+  
+  .att-cal-cell {
+    min-height: 70px;
+    padding: 0.25rem;
+  }
+  
+  .att-cal-time {
+    font-size: 0.5rem;
+  }
+  
+  .att-cal-checkin, .att-cal-checkout {
+    font-size: 0.5rem;
+  }
+  
+  .att-cal-badge {
+    font-size: 0.5rem;
+    padding: 0.1rem 0.25rem;
+  }
+  
+  .schedule-form-row {
+    flex-direction: column;
+  }
+  
+  .schedule-time-group, .schedule-name-group {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  
+  .schedule-time-input {
+    flex-wrap: nowrap;
+  }
+  
+  .schedule-time-input .input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  
+  .schedule-time-input .select {
+    flex: 0 0 auto;
+    width: 4.5rem;
+  }
+  
+  .perf-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .perf-row-val {
+    min-width: 0;
+    text-align: left;
+  }
+  
+  .perf-row-input {
+    width: 100%;
+  }
+  
+  .perf-save-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .perf-save-bar > div {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .perf-save-bar .btn {
+    flex: 1;
+  }
+  
+  .list-row {
+    flex-wrap: wrap;
+  }
+  
+  .list-row-info {
+    flex: 1 1 100%;
+  }
+  
+  .leave-request-status {
+    align-items: flex-start;
+    width: 100%;
+  }
+  
+  .remove-emp-item {
+    flex-wrap: wrap;
+  }
+  
+  .remove-emp-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .remove-emp-btn, .edit-emp-btn {
+    flex: 1;
+    justify-content: center;
+  }
+  
+  .schedule-slot-item {
+    flex-wrap: wrap;
+  }
+  
+  .schedule-slot-info {
+    flex: 1 1 100%;
+  }
+  
+  .schedule-slot-remove {
+    margin-left: auto;
+  }
+  
+  .modal {
+    margin: 0.5rem;
+    padding: 1rem;
+  }
+  
+  .detail-grid > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .ta-detail-grid > div {
+    flex: 1 1 100%;
+  }
+  
+  .perf-hero {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .perf-hero-right {
+    text-align: center;
+  }
+  
+  .perf-tiles {
+    grid-template-columns: 1fr;
+  }
+  
+  .perf-editor-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .perf-editor-foot > div {
+    display: flex;
+    gap: 0.5rem;
+  }
+  
+  .perf-editor-foot .btn {
+    flex: 1;
+  }
+  
+  .perf-podium {
+    gap: 0.5rem;
+    padding: 1.5rem 0.5rem 1rem;
+  }
+  
+  .perf-podium-step {
+    width: 90px;
+  }
+  
+  .perf-podium-avatar {
+    width: 44px;
+    height: 44px;
+    font-size: 0.875rem;
+  }
+  
+  .perf-podium-step.rank-1 .perf-podium-avatar {
+    width: 52px;
+    height: 52px;
+    font-size: 1rem;
+  }
+  
+  .perf-podium-step.rank-1 .perf-podium-base {
+    height: 60px;
+  }
+  
+  .perf-podium-step.rank-2 .perf-podium-base {
+    height: 44px;
+  }
+  
+  .perf-podium-step.rank-3 .perf-podium-base {
+    height: 32px;
+  }
+  
+  .perf-podium-name {
+    font-size: 0.6875rem;
+  }
+  
+  .perf-podium-pts {
+    font-size: 0.625rem;
+  }
+  
+  .perf-rank-row {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  
+  .perf-rank-name {
+    flex: 1 1 100%;
+  }
+  
+  .perf-rank-pts {
+    margin-left: auto;
+  }
+  
+  .sunday-leave-pop {
+    flex-wrap: wrap;
+    padding: 0.75rem;
+  }
+  
+  .sunday-leave-text {
+    flex: 1 1 calc(100% - 2.5rem);
+  }
+  
+  .col-manage-row {
+    flex-wrap: wrap;
+  }
+  
+  .col-manage-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .notif-panel {
+    width: calc(100vw - 2rem);
+    max-width: 320px;
+    right: -0.5rem;
+  }
+  
+  .attendance-clock {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+  }
+  
+  .attendance-clock .time {
+    font-size: 1.375rem;
+  }
+  
+  .chart-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  
+  .chart-toggle-group {
+    width: 100%;
+  }
+  
+  .chart-toggle {
+    flex: 1;
+    text-align: center;
+  }
+  
+  .pie-legend {
+    gap: 0.75rem;
+    font-size: 0.75rem;
+  }
+  
+  .page-header h1 {
+    font-size: 1.35rem;
+  }
+  
+  .page-header p {
+    font-size: 0.8125rem;
+  }
+  
+  .btn {
+    min-height: 40px;
+  }
+  
+  .btn.sm {
+    min-height: 36px;
+  }
+  
+  .input, .select {
+    min-height: 40px;
+  }
+  
+  .form-row.horizontal {
+    flex-direction: column;
+  }
+  
+  .form-row.horizontal .search-wrap {
+    max-width: 100%;
+  }
+  
+  .form-row.horizontal .select {
+    max-width: 100% !important;
+  }
+  
+  .employee-card {
+    padding: 1rem;
+  }
+  
+  .employee-card-head {
+    flex-wrap: wrap;
+  }
+  
+  .emp-mgmt-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+  
+  .add-emp-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .global-chat-btn {
+    width: 3rem;
+    height: 3rem;
+    bottom: 1rem;
+    right: 1rem;
+  }
+  
+  .global-chat-window {
+    right: 0.5rem;
+    bottom: 4.5rem;
+    width: calc(100vw - 1rem);
+    max-width: calc(100vw - 1rem);
+    height: 60vh;
+  }
+  
+  .toast {
+    bottom: 1rem;
+    right: 1rem;
+    left: 1rem;
+    text-align: center;
+  }
+}
+
+/* ---------- Very small screens (< 360px) ---------- */
+@media (max-width: 360px) {
+  .stats-grid > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .stats-grid.cols-4 > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .stats-grid.cols-3 > * {
+    flex: 1 1 100%;
+    max-width: 100%;
+  }
+  
+  .topbar {
+    padding: 0.5rem 0.625rem;
+  }
+  
+  .user-info-chip #user-name {
+    max-width: 3.5rem;
+  }
+  
+  .user-role-badge {
+    display: none;
+  }
+  
+  .sidebar {
+    width: 260px;
+  }
+  
+  .chat-sidebar {
+    max-height: 35%;
+  }
+  
+  .chat-bubble {
+    max-width: 90%;
+  }
+  
+  .att-cal-cell {
+    min-height: 60px;
+  }
+  
+  .att-cal-date {
+    font-size: 0.625rem;
+  }
+  
+  .att-cal-badge {
+    font-size: 0.45rem;
+    padding: 0.05rem 0.2rem;
+  }
+  
+  .att-cal-time {
+    font-size: 0.45rem;
+  }
+  
+  .perf-podium-step {
+    width: 80px;
+  }
+  
+  .perf-podium-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 0.75rem;
+  }
+  
+  .perf-podium-step.rank-1 .perf-podium-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 0.875rem;
+  }
+}
+
+/* ---------- Landscape mobile ---------- */
+@media (max-width: 900px) and (orientation: landscape) {
+  .chat-layout {
+    height: calc(100vh - 5rem);
+    min-height: 300px;
+  }
+  
+  .chat-sidebar {
+    max-height: 100%;
+  }
+  
+  .chat-messages {
+    padding: 0.5rem;
+  }
+  
+  .chat-bubble {
+    max-width: 80%;
+  }
+  
+  .att-cal-cell {
+    min-height: 60px;
+  }
+  
+  .att-cal-time {
+    font-size: 0.5rem;
+  }
+  
+  .att-cal-badge {
+    font-size: 0.5rem;
+  }
+  
+  .perf-podium {
+    padding: 1rem 0.5rem 0.75rem;
+  }
+  
+  .perf-podium-step {
+    width: 80px;
+  }
+  
+  .perf-podium-avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 0.75rem;
+  }
+  
+  .perf-podium-step.rank-1 .perf-podium-avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 0.875rem;
+  }
+  
+  .perf-podium-step.rank-1 .perf-podium-base {
+    height: 50px;
+  }
+  
+  .perf-podium-step.rank-2 .perf-podium-base {
+    height: 36px;
+  }
+  
+  .perf-podium-step.rank-3 .perf-podium-base {
+    height: 28px;
+  }
+}
+
+/* ---------- Touch device optimizations ---------- */
+@media (hover: none) and (pointer: coarse) {
+  .nav-item {
+    min-height: 48px;
+  }
+  
+  .btn {
+    min-height: 44px;
+  }
+  
+  .btn.sm {
+    min-height: 40px;
+  }
+  
+  .input, .select {
+    min-height: 44px;
+  }
+  
+  .chat-conv-btn {
+    min-height: 56px;
+  }
+  
+  .chat-send-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  .chat-back-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  .menu-btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  .logout-btn {
+    min-height: 44px;
+  }
+  
+  .cal-nav-btn {
+    min-height: 40px;
+  }
+  
+  .view-toggle button {
+    min-height: 40px;
+  }
+}
