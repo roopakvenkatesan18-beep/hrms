@@ -3,6 +3,10 @@
    Public configuration served by the application server
    ============================================================ */
 
+if (typeof APP_CONFIG === 'undefined') {
+  throw new Error('Supabase configuration failed to load. Check the Vercel environment variables.');
+}
+
 const SUPABASE_URL = APP_CONFIG.supabaseUrl;
 const SUPABASE_ANON_KEY = APP_CONFIG.supabaseAnonKey;
 
