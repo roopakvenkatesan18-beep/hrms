@@ -35,41 +35,6 @@ const Session = (() => {
     }
   }
 
-  async function buildFallbackProfile(user) {
-    const email = user.email || '';
-    const empidMatch = email.match(/^([^@]+)@/);
-    const empidExtracted = empidMatch ? empidMatch[1] : '';
-    const role = empidExtracted === '0001' ? 'hr' : 'employee';
-
-    let foundName = 'Employee ' + empidExtracted;
-    const nameMap = {
-      '0001': 'Harikrishnan',
-      '0002': 'Chandru',
-      '0005': 'Raji',
-      '0006': 'Empname0006',
-      '0007': 'Empname0007'
-    };
-    if (nameMap[empidExtracted]) foundName = nameMap[empidExtracted];
-
-    try {
-      const { data: attData } = await supabaseClient
-        .from('emp_monthly')
-        .select('name')
-        .eq('empid', empidExtracted)
-        .limit(1)
-        .single();
-      if (attData && attData.name) foundName = attData.name;
-    } catch (e) {}
-
-    return {
-      id: user.id,
-      empid: empidExtracted,
-      name: foundName,
-      role: role,
-      department: 'Training'
-    };
-  }
-
   async function getProfile() {
     try {
       const user = await getUser();
@@ -82,9 +47,9 @@ const Session = (() => {
         .single();
 
       if (error || !data) {
-        return buildFallbackProfile(user);
+        return null;
       }
-      return data;
+      return ['hr', 'employee'].includes(data.role) ? data : null;
     } catch (err) {
       console.error('[Session] getProfile error:', err.message);
       return null;
@@ -147,7 +112,6 @@ const Session = (() => {
     getSession,
     getUser,
     getProfile,
-    buildFallbackProfile,
     isAuthenticated,
     onAuthStateChange,
     getDashboardUrl,

@@ -11,7 +11,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css?v=7" />
   <link rel="stylesheet" href="login-styles.css" />
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="/vendor/chart.js"></script>
 </head>
 
 <body>
@@ -254,7 +254,7 @@
           <div class="card" style="margin-top:1.5rem">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
               <h3>Recently Processed (Last 5)</h3>
-              <button class="btn outline sm" onclick="openHistory('Leave')">View Full History</button>
+              <button class="btn outline sm" data-action="history" data-kind="Leave">View Full History</button>
             </div>
             <div class="card-body" id="leave-admin-recent"></div>
           </div>
@@ -285,7 +285,7 @@
           <div class="card" style="margin-top:1.5rem">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
               <h3>Recently Processed (Last 5)</h3>
-              <button class="btn outline sm" onclick="openHistory('WFH')">View Full History</button>
+              <button class="btn outline sm" data-action="history" data-kind="WFH">View Full History</button>
             </div>
             <div class="card-body" id="wfh-admin-recent"></div>
           </div>
@@ -308,7 +308,7 @@
           <div class="card" style="margin-top:1.5rem">
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap">
               <h3>Recently Processed (Last 5)</h3>
-              <button class="btn outline sm" onclick="openHistory('Travel')">View Full History</button>
+              <button class="btn outline sm" data-action="history" data-kind="Travel">View Full History</button>
             </div>
             <div class="card-body" id="travel-admin-recent"></div>
           </div>
@@ -333,7 +333,7 @@
           <div class="modal" style="max-width:560px">
             <div class="modal-header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
               <h3 id="ta-modal-title" style="margin:0">Travel Allowance Request</h3>
-              <button class="modal-close" id="ta-modal-close-btn" onclick="closeTravelAllowanceModal()" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
+              <button class="modal-close" id="ta-modal-close-btn" data-action="close-travel" style="background:none;border:none;font-size:1.5rem;cursor:pointer;line-height:1">&times;</button>
             </div>
             <div class="modal-body" id="ta-modal-body"></div>
             <div class="modal-footer" id="ta-modal-actions" style="display:flex;gap:0.75rem;justify-content:flex-end;margin-top:1rem"></div>
@@ -472,7 +472,7 @@
                   </div>
                   <div class="add-emp-field">
                     <label>Password *</label>
-                    <input id="ae-password" class="input" type="password" placeholder="Min. 8 characters" required />
+                    <input id="ae-password" class="input" type="password" placeholder="Min. 12 characters" minlength="12" required />
                     <p class="add-emp-hint">Login email: <strong id="ae-email-preview">—</strong></p>
                   </div>
                   <div class="add-emp-grid" id="ae-shift-fields">
@@ -824,7 +824,7 @@
                 <p style="font-size:0.875rem;color:var(--muted-foreground);margin-bottom:1rem">
                   To change your password, you'll be redirected to a secure page where you'll need to verify your identity with your Employee ID and current password.
                 </p>
-                <button class="btn primary full" id="profile-change-password-btn" onclick="window.location.href='change-password.html'">
+                <button class="btn primary full" id="profile-change-password-btn" data-action="change-password">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:0.5rem"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   Change Password
                 </button>
@@ -886,15 +886,15 @@
   </div>
 
   <!-- ========== Scripts ========== -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="js/supabase.js?v=3"></script>
+  <script src="/vendor/supabase.js"></script>
+  <script src="js/config.js"></script>
+  <script src="js/supabase.js?v=security"></script>
   <script src="js/session.js?v=9"></script>
   <script src="js/auth.js?v=7"></script>
   <script src="js/roleGuard.js?v=3"></script>
   <script src="js/api.js?v=19"></script>
   <script src="data.js?v=3"></script>
   <script src="app.js?v=41"></script>
-  <script src="js/demo.js?v=1"></script>
 
   <script>
     document.addEventListener('DOMContentLoaded', async () => {

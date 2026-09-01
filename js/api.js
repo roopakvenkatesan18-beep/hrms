@@ -9,18 +9,10 @@ const API = (() => {
    * Convert SQL time "09:30:00" to UI format "09:30 AM"
    */
   function formatTime(timeStr) {
-    if (!timeStr || timeStr === "00:00:00") return "--:--";
-    const parts = timeStr.split(':');
-    if (parts.length < 2) return timeStr;
-
-    let h = parseInt(parts[0], 10);
-    const m = parts[1];
-    const ampm = h >= 12 ? 'PM' : 'AM';
-
-    h = h % 12;
-    h = h ? h : 12; // 0 becomes 12
-
-    return `${h.toString().padStart(2, '0')}:${m} ${ampm}`;
+    if (typeof timeStr !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?$/.test(timeStr) || timeStr === '00:00:00') return '--:--';
+    const [hours, minutes] = timeStr.split(':');
+    const hour = Number(hours);
+    return `${String(hour % 12 || 12).padStart(2, '0')}:${minutes} ${hour >= 12 ? 'PM' : 'AM'}`;
   }
 
   /**
@@ -131,111 +123,9 @@ const API = (() => {
 
   /**
    * Add a new employee (HR Admin only)
-   * Uses a secondary Supabase client with persistSession: false so the HR admin is not logged out!
-   *
-   * The flow is atomic: if the profile row cannot be written, any freshly
-   * created auth user is rolled back so we never leave an orphaned account
-   * that later gets cleaned up and "disappears". Re-adding an existing empid
-   * relinks the profile (idempotent) instead of creating a duplicate.
    */
   async function addEmployee(empid, name, role, dept, password, shiftCheckin = null, shiftCheckout = null, satPlan = 'every_saturday_work', sunPlan = 'two_sundays_work') {
-    const cleanEmpid = (empid || "").trim();
-    const cleanName = (name || "").trim();
-    const email = `${cleanEmpid}@caddtech.com`;
-
-    // Create a clean background client (so the HR admin isn't logged out)
-    const bgClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false }
-    });
-
-    let authUserId = null;
-    let createdNewAuthUser = false;
-
-    try {
-      // 1. Ensure the auth user exists (create or resolve).
-      const { data: signUpData, error: signUpError } = await bgClient.auth.signUp({
-        email: email,
-        password: password,
-        options: {
-          data: {
-            empid: cleanEmpid,
-            name: cleanName,
-            role: role,
-            department: dept
-          }
-        }
-      });
-
-      if (signUpError) {
-        if (signUpError.message.includes("User already registered")) {
-          // Auth account already exists — resolve its UUID without the password.
-          try {
-            const { data: rpcUid, error: rpcErr } = await supabaseClient.rpc('get_auth_user_id_by_empid', {
-              target_empid: cleanEmpid
-            });
-            if (!rpcErr && rpcUid) authUserId = rpcUid;
-          } catch (e) {
-            console.warn('[API] get_auth_user_id_by_empid failed, trying password sign-in:', e);
-          }
-
-          if (!authUserId) {
-            const { data: signInData, error: signInError } = await bgClient.auth.signInWithPassword({
-              email: email,
-              password: password,
-            });
-            if (signInError || !signInData?.user) {
-              throw new Error(`Employee ID ${cleanEmpid} already has an account, but the password didn't match. Use the original password or reset it.`);
-            }
-            authUserId = signInData.user.id;
-          }
-        } else {
-          throw signUpError;
-        }
-      } else {
-        authUserId = signUpData.user.id;
-        createdNewAuthUser = true;
-      }
-
-      if (!authUserId) {
-        throw new Error("Could not resolve the employee's auth account. Please try again.");
-      }
-
-      // 2. Create/update the profile row via a SECURITY DEFINER RPC (bypasses RLS).
-      //    Idempotent on the primary key, so re-adding relinks cleanly.
-      const { error: rpcError } = await supabaseClient.rpc('create_employee_profile', {
-        p_id: authUserId,
-        p_empid: cleanEmpid,
-        p_name: cleanName,
-        p_role: role,
-        p_department: dept,
-        p_shift_checkin: shiftCheckin || null,
-        p_shift_checkout: shiftCheckout || null,
-        p_sat_plan: satPlan || 'every_saturday_work',
-        p_sun_plan: sunPlan || 'two_sundays_work'
-      });
-
-      if (rpcError) {
-        // Roll back a freshly-created auth user so we don't leave an orphan
-        // that later gets cleaned up and "disappears".
-        if (createdNewAuthUser) {
-          await supabaseClient.rpc('delete_auth_user_by_empid', { target_empid: cleanEmpid }).catch(() => {});
-        }
-        throw rpcError;
-      }
-
-      // 3. Guarantee a staff_performance row (zero points) so the new hire
-      //    appears in the leaderboard / dashboard consistently.
-      try {
-        await ensureStaffPerformance(cleanEmpid, cleanName);
-      } catch (e) {
-        console.warn('[API] ensureStaffPerformance (onboard) failed:', e);
-      }
-
-      return { user: { id: authUserId } };
-    } catch (err) {
-      console.error("[API] addEmployee Error:", err);
-      throw err;
-    }
+    throw new Error('Employee creation is disabled in the static deployment. Create accounts through the Supabase administrator.');
   }
 
   /**
@@ -278,7 +168,6 @@ const API = (() => {
    * Remove employee — deletes the auth user via the
    * delete_auth_user_by_empid RPC (runs with SECURITY DEFINER so it can
    * reach auth.users). Deleting the auth user cascades to the profiles row.
-   * Falls back to deleting just the profile row if the RPC is unavailable.
    */
   async function removeEmployee(empid) {
     try {
@@ -287,15 +176,7 @@ const API = (() => {
         target_empid: empid
       });
       
-      if (rpcError) {
-        console.warn('[API] RPC user deletion failed, falling back to profile row deletion:', rpcError);
-        // Fallback: delete just profile row
-        const { error } = await supabaseClient
-          .from('profiles')
-          .delete()
-          .eq('empid', empid);
-        if (error) throw error;
-      }
+      if (rpcError) throw rpcError;
       return true;
     } catch (err) {
       console.error("[API] removeEmployee Error:", err);

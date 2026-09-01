@@ -1,0 +1,18 @@
+{
+  "name": "caddtech-hrms",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "start": "node --env-file=.env server.mjs",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.112.4",
+    "chart.js": "4.5.1",
+    "redis": "6.2.1"
+  }
+}

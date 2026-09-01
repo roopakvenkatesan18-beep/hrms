@@ -7,5 +7,11 @@
 .vscode/
 .ruff_cache/
 
-# DB migration scripts (not needed for deployment)
-setup/
+.env
+.env.*
+!.env.example
+node_modules/
+coverage/
+.security-qa/
+__pycache__/
+*.log

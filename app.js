@@ -8,7 +8,7 @@ const state = {
   page: "dashboard",
   role: "admin",
   sidebarOpen: false,
-  attendance: seedInitialAttendance(),
+  attendance: [],
   leaveRequests: [],
   wfhRequests: [],
   travelRequests: [],
@@ -45,27 +45,53 @@ const PERMISSION_MONTHLY_MINUTES = 180;
 
 /* ---------- Helpers ---------- */
 function badgeClass(status) {
-  return (status || "").toLowerCase().replace(/\s+/g, "-");
+  return String(status || "").toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 }
 
 function statCardHTML(label, value, hint, accent = "primary") {
   const trendIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
   return `<div class="card stat-card">
     <div class="stat-card-top">
-      <div><div class="stat-label">${label}</div><div class="stat-value">${value}</div></div>
-      <div class="stat-icon ${accent}">${trendIcon}</div>
+      <div><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${escapeHtml(value)}</div></div>
+      <div class="stat-icon ${escapeHtml(accent)}">${trendIcon}</div>
     </div>
-    ${hint ? `<div class="stat-hint">${hint}</div>` : ""}
+    ${hint ? `<div class="stat-hint">${escapeHtml(hint)}</div>` : ""}
   </div>`;
 }
 
 function avatarHTML(name, size = "md", variant = "primary") {
-  return `<div class="avatar ${size} ${variant}">${getInitials(name)}</div>`;
+  return `<div class="avatar ${escapeHtml(size)} ${escapeHtml(variant)}">${escapeHtml(getInitials(name))}</div>`;
 }
 
 function badgeHTML(status) {
-  return `<span class="badge ${badgeClass(status)}">${status}</span>`;
+  return `<span class="badge ${badgeClass(status)}">${escapeHtml(status)}</span>`;
 }
+
+function safeScheduleColor(color) {
+  return /^#[0-9a-f]{6}$/i.test(String(color)) ? color : SLOT_COLORS[0];
+}
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button || button.disabled) return;
+  const { action, id, name, status, kind } = button.dataset;
+  const adminActions = ["edit-employee", "remove-employee", "leave-status", "wfh-status", "travel-detail", "travel-status", "history"];
+  if (adminActions.includes(action) && state.role !== "admin") return;
+  if (["leave-status", "wfh-status", "travel-status"].includes(action) && !["Approved", "Rejected"].includes(status)) return;
+  switch (action) {
+    case "edit-employee": openEditEmployee(id, name); break;
+    case "remove-employee": confirmRemoveEmployee(id, name); break;
+    case "remove-schedule": removeScheduleSlot(id); break;
+    case "leave-status": setLeaveStatus(id, status); break;
+    case "wfh-status": setWfhStatus(id, status); break;
+    case "travel-detail": openTravelAllowanceDetail(id); break;
+    case "travel-status": setTravelAllowanceStatus(id, status); break;
+    case "dismiss-sunday": button.parentElement.style.display = "none"; break;
+    case "history": if (["Leave", "WFH", "Travel"].includes(kind)) openHistory(kind); break;
+    case "close-travel": closeTravelAllowanceModal(); break;
+    case "change-password": window.location.href = "change-password.html"; break;
+  }
+});
 
 function parseTimeInput(raw, ampm) {
   if (!raw) return null;
@@ -100,7 +126,7 @@ function fmtTime(h, m) {
 }
 
 function formatPunchTime(timeStr) {
-  return API.formatTime(timeStr);
+  return escapeHtml(API.formatTime(timeStr));
 }
 
 /* Render a displayed time ("09:42 AM") with the AM/PM label in a smaller
@@ -439,7 +465,7 @@ async function renderEmpManagement() {
       errEl.textContent = ''; okEl.textContent = '';
 
       if (!empid || !name || !dept || !pass) { errEl.textContent = 'Please fill all fields.'; return; }
-      if (pass.length < 8) { errEl.textContent = 'Password must be at least 8 characters.'; return; }
+      if (pass.length < 12) { errEl.textContent = 'Password must be at least 12 characters.'; return; }
 
       // Shift is required for employees; ignored for HR
       let shiftCheckin = null, shiftCheckout = null;
@@ -512,18 +538,18 @@ function renderRemoveList(query) {
   listEl.innerHTML = filtered.map(p => `
     <div class="remove-emp-item">
       <div class="remove-emp-info">
-        <div class="remove-emp-avatar">${(p.name || 'E').split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()}</div>
+        <div class="remove-emp-avatar">${escapeHtml(getInitials(p.name || 'E'))}</div>
         <div class="remove-emp-details">
           <div class="remove-emp-name">${escapeHtml(p.name || 'Unknown')}</div>
           <div class="remove-emp-meta">ID: ${escapeHtml(p.empid)} · ${escapeHtml(p.role)} · ${escapeHtml(p.department || '—')}</div>
         </div>
       </div>
       <div class="remove-emp-actions">
-        <button onclick="openEditEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="edit-emp-btn" title="Edit department & shift">
+        <button data-action="edit-employee" data-id="${escapeHtml(p.empid)}" data-name="${escapeHtml(p.name || '')}" class="edit-emp-btn" title="Edit department & shift">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           Edit
         </button>
-        <button onclick="confirmRemoveEmployee('${p.empid}','${(p.name||'').replace(/'/g,'\\\'')}')" class="remove-emp-btn">
+        <button data-action="remove-employee" data-id="${escapeHtml(p.empid)}" data-name="${escapeHtml(p.name || '')}" class="remove-emp-btn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
           Remove
         </button>
@@ -708,7 +734,7 @@ function renderEmployeeDashboard() {
   document.getElementById("emp-leaves-list").innerHTML = myLeaves.map(l => `
     <div class="list-row">
       <div class="list-row-info">
-        <div class="title">${l.type} Leave</div>
+        <div class="title">${escapeHtml(l.type)} Leave</div>
         <div class="sub">${formatDate(l.from)} – ${formatDate(l.to)} · ${l.days}d</div>
       </div>
       ${badgeHTML(l.status)}
@@ -955,12 +981,12 @@ function renderTodayCheckinStatus() {
       <div class="punch-details" style="background:#f9fafb;border-radius:0.5rem;padding:0.75rem">
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-bottom:1px solid #e5e7eb">
           <span style="font-weight:600;font-size:0.8125rem;color:#374151">Check-in:</span>
-          <span style="font-size:0.875rem;color:#059669;font-weight:700">${res.checkIn}</span>
+          <span style="font-size:0.875rem;color:#059669;font-weight:700">${escapeHtml(res.checkIn)}</span>
         </div>
         ${sessionsHTML}
         <div style="display:flex;align-items:center;gap:0.5rem;padding:0.375rem 0;border-top:1px solid #e5e7eb">
           <span style="font-weight:600;font-size:0.8125rem;color:#374151">Check-out:</span>
-          <span style="font-size:0.875rem;color:#dc2626;font-weight:700">${res.checkOut}</span>
+          <span style="font-size:0.875rem;color:#dc2626;font-weight:700">${escapeHtml(res.checkOut)}</span>
         </div>
       </div>
     `;
@@ -994,7 +1020,7 @@ function renderScheduleSlots() {
   } else {
     container.innerHTML = sorted.map(slot => `
       <div class="schedule-slot-item">
-        <div class="schedule-slot-bar" style="background:${slot.color}"></div>
+        <div class="schedule-slot-bar" style="background:${safeScheduleColor(slot.color)}"></div>
         <div class="schedule-slot-info">
           <div class="schedule-slot-row">
             <span class="schedule-slot-label">Time:</span>
@@ -1005,7 +1031,7 @@ function renderScheduleSlots() {
             <span class="schedule-slot-value schedule-slot-class">${escapeHtml(slot.className)}</span>
           </div>
         </div>
-        <button onclick="removeScheduleSlot('${slot.id}')" class="schedule-slot-remove" title="Remove slot">
+        <button data-action="remove-schedule" data-id="${escapeHtml(slot.id)}" class="schedule-slot-remove" title="Remove slot">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
@@ -1119,7 +1145,7 @@ function renderDirectory() {
       ? `<div class="meta-line"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:1rem;height:1rem"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg><span>${escapeHtml(emp.phone || "—")}</span></div>`
       : "";
     return `
-    <div class="card employee-card" data-emp-id="${emp.id}">
+    <div class="card employee-card" data-emp-id="${escapeHtml(emp.id)}">
       <div class="employee-card-head">
         ${avatarHTML(emp.name, "lg")}
         <div>
@@ -1227,9 +1253,9 @@ function renderAttendanceAdmin() {
           <div style="font-weight:500">${escapeHtml(emp?.name ?? "—")}</div>
           <div style="font-size:0.75rem;color:#6b7280">${escapeHtml(a.employeeId)}</div>
         </td>
-        <td><span style="font-weight:500">${a.checkIn ?? "—"}</span></td>
+        <td><span style="font-weight:500">${escapeHtml(a.checkIn ?? "—")}</span></td>
         <td>${sessionsHTML}</td>
-        <td><span style="font-weight:500">${a.checkOut ?? "—"}</span></td>
+        <td><span style="font-weight:500">${escapeHtml(a.checkOut ?? "—")}</span></td>
         <td>${badgeHTML(res.status)}</td>
       </tr>`;
     }).join("");
@@ -1248,14 +1274,14 @@ function renderAttendanceAdmin() {
         mHtml += `
           <tr>
             <td>
-              <div style="font-weight:600;color:#111827">${row.name || 'Unknown'}</div>
-              <div style="font-size:0.75rem;color:#6b7280">ID: ${row.employeeId}</div>
+              <div style="font-weight:600;color:#111827">${escapeHtml(row.name || 'Unknown')}</div>
+              <div style="font-size:0.75rem;color:#6b7280">ID: ${escapeHtml(row.employeeId)}</div>
             </td>
             <td>
-              <div style="font-weight:500;color:#111827">${row.date}</div>
+              <div style="font-weight:500;color:#111827">${escapeHtml(row.date)}</div>
             </td>
-            <td>${row.checkIn}</td>
-            <td>${row.checkOut}</td>
+            <td>${escapeHtml(row.checkIn)}</td>
+            <td>${escapeHtml(row.checkOut)}</td>
             <td>
               <span class="badge ${computeWorkedHours(row.checkIn, row.checkOut, row.punches) > 0 ? 'warning' : 'success'}">${computeWorkedHours(row.checkIn, row.checkOut, row.punches)} hrs</span>
             </td>
@@ -1358,10 +1384,10 @@ function renderAttendanceEmployee() {
         </div>
         <div class="att-timeline-center">
           <div class="att-timeline-track ${status}">
-            <span class="att-tl-time start">${checkInStr}</span>
+            <span class="att-tl-time start">${escapeHtml(checkInStr)}</span>
             <span class="att-timeline-dot ${status}"></span>
             <span class="att-timeline-dot ${endDotClass}"></span>
-            <span class="att-tl-time end">${checkOutStr}</span>
+            <span class="att-tl-time end">${escapeHtml(checkOutStr)}</span>
           </div>
         </div>
         <div class="att-hours-info">
@@ -1384,10 +1410,10 @@ function renderAttendanceEmployee() {
         mHtml += `
           <tr>
             <td>
-              <div style="font-weight:500;color:#111827">${row.date}</div>
+              <div style="font-weight:500;color:#111827">${escapeHtml(row.date)}</div>
             </td>
-            <td>${row.checkIn}</td>
-            <td>${row.checkOut}</td>
+            <td>${escapeHtml(row.checkIn)}</td>
+            <td>${escapeHtml(row.checkOut)}</td>
             <td>
               <span class="badge ${computeWorkedHours(row.checkIn, row.checkOut, row.punches) > 0 ? 'warning' : 'success'}">${computeWorkedHours(row.checkIn, row.checkOut, row.punches)} hrs</span>
             </td>
@@ -1474,7 +1500,7 @@ function renderSundayLeaveInfo() {
       <strong>You have ${remaining} Sunday${remaining === 1 ? "" : "s"} to take leave</strong>
       <span class="sunday-leave-sub">${usedCount}/${MAX_SUNDAY_LEAVE} Sunday leaves used this month</span>
     </div>
-    <button class="sunday-leave-close" onclick="this.parentNode.style.display='none'">&times;</button>
+    <button class="sunday-leave-close" data-action="dismiss-sunday">&times;</button>
   `;
 }
 
@@ -1641,8 +1667,8 @@ function renderLeaveAdmin() {
         <div class="sub">${formatDate(l.from)} to ${formatDate(l.to)} · ${l.days} days · ${escapeHtml(l.reason)}</div>
       </div>
       ${withActions ? `
-        <button class="btn primary sm" onclick="setLeaveStatus('${l.id}','Approved')">Approve</button>
-        <button class="btn outline sm" onclick="setLeaveStatus('${l.id}','Rejected')">Reject</button>` : `
+        <button class="btn primary sm" data-action="leave-status" data-id="${escapeHtml(l.id)}" data-status="Approved">Approve</button>
+        <button class="btn outline sm" data-action="leave-status" data-id="${escapeHtml(l.id)}" data-status="Rejected">Reject</button>` : `
         ${badgeHTML(l.status)}
         ${l.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(l.reviewerNote)}</span>` : ""}`}
     </div>`;
@@ -1687,7 +1713,7 @@ function renderLeaveEmployee() {
   document.getElementById("leave-emp-requests").innerHTML = myLeaves.map(l => `
     <div class="list-row">
       <div class="list-row-info">
-        <div class="title">${l.type} Leave</div>
+        <div class="title">${escapeHtml(l.type)} Leave</div>
         <div class="sub">${formatDate(l.from)} – ${formatDate(l.to)} · ${l.days}d</div>
       </div>
       <div class="leave-request-status">
@@ -1772,7 +1798,7 @@ function renderWfhEmployee() {
   const listEl = document.getElementById("wfh-emp-requests");
   if (listEl) {
     listEl.innerHTML = my.map(w => {
-      const timeStr = (w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : "";
+      const timeStr = (w.fromTime && w.toTime) ? ` · ${escapeHtml(w.fromTime)} – ${escapeHtml(w.toTime)}` : "";
       return `<div class="list-row">
         <div class="list-row-info">
           <div class="title">Work From Home</div>
@@ -1803,7 +1829,7 @@ function renderWfhAdmin() {
 
   const wfhRowHTML = (w, withActions) => {
     const emp = getEmployee(w.employeeId);
-    const timeStr = (w.fromTime && w.toTime) ? ` · ${w.fromTime} – ${w.toTime}` : "";
+    const timeStr = (w.fromTime && w.toTime) ? ` · ${escapeHtml(w.fromTime)} – ${escapeHtml(w.toTime)}` : "";
     return `<div class="list-row">
       ${avatarHTML(emp.name)}
       <div class="list-row-info">
@@ -1811,8 +1837,8 @@ function renderWfhAdmin() {
         <div class="sub">${formatDate(w.from)} to ${formatDate(w.to)} · ${w.days} days · ${escapeHtml(w.reason)}${timeStr}</div>
       </div>
       ${withActions ? `
-        <button class="btn primary sm" onclick="setWfhStatus('${w.id}','Approved')">Approve</button>
-        <button class="btn outline sm" onclick="setWfhStatus('${w.id}','Rejected')">Reject</button>` : `
+        <button class="btn primary sm" data-action="wfh-status" data-id="${escapeHtml(w.id)}" data-status="Approved">Approve</button>
+        <button class="btn outline sm" data-action="wfh-status" data-id="${escapeHtml(w.id)}" data-status="Rejected">Reject</button>` : `
         ${badgeHTML(w.status)}
         ${w.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(w.reviewerNote)}</span>` : ""}`}
     </div>`;
@@ -2032,7 +2058,7 @@ function renderPermissionEmployee() {
     <div class="list-row">
       <div class="list-row-info">
         <div class="title">Permission · ${formatDate(p.date)}</div>
-        <div class="sub">${p.fromTime} – ${p.toTime} · ${formatDuration(p.durationMinutes)}${p.reason ? ` · ${escapeHtml(p.reason)}` : ""}</div>
+        <div class="sub">${escapeHtml(p.fromTime)} – ${escapeHtml(p.toTime)} · ${formatDuration(p.durationMinutes)}${p.reason ? ` · ${escapeHtml(p.reason)}` : ""}</div>
       </div>
       ${badgeHTML(p.status)}
     </div>`).join("");
@@ -2061,7 +2087,7 @@ function renderPermissionAdmin() {
       ${avatarHTML(emp.name)}
       <div class="list-row-info">
         <div class="title">${escapeHtml(emp.name)} — Permission</div>
-        <div class="sub">${formatDate(p.date)} · ${p.fromTime} – ${p.toTime} · ${formatDuration(p.durationMinutes)}${p.reason ? ` · ${escapeHtml(p.reason)}` : ""}</div>
+        <div class="sub">${formatDate(p.date)} · ${escapeHtml(p.fromTime)} – ${escapeHtml(p.toTime)} · ${formatDuration(p.durationMinutes)}${p.reason ? ` · ${escapeHtml(p.reason)}` : ""}</div>
       </div>
       ${badgeHTML(p.status)}
     </div>`;
@@ -2141,7 +2167,7 @@ function renderTravelAllowanceAdmin() {
     filter.innerHTML = `<option value="all">All Employees</option>` +
       empIds.map(id => {
         const emp = getEmployee(id);
-        return `<option value="${id}" ${current === id ? "selected" : ""}>${emp.name} (${id})</option>`;
+        return `<option value="${escapeHtml(id)}" ${current === id ? "selected" : ""}>${escapeHtml(emp.name)} (${escapeHtml(id)})</option>`;
       }).join("");
     filter.onchange = () => {
       state.travelFilterEmp = filter.value;
@@ -2165,7 +2191,7 @@ function renderTravelAllowanceAdmin() {
         <div class="sub">${escapeHtml(r.fromLocation)} → ${escapeHtml(r.destination)} · ${formatDate(r.requestDate)} · ${r.distanceKm} km · ₹${r.reimbursement.toLocaleString()}</div>
       </div>
       ${withActions
-        ? `<button class="btn outline sm" onclick="openTravelAllowanceDetail('${r.id}')">View</button>`
+        ? `<button class="btn outline sm" data-action="travel-detail" data-id="${escapeHtml(r.id)}">View</button>`
         : `${badgeHTML(r.status)}
            ${r.reviewerNote ? `<span class="leave-reviewer-note">${escapeHtml(r.reviewerNote)}</span>` : ""}`}
     </div>`;
@@ -2274,8 +2300,8 @@ async function openTravelAllowanceDetail(id) {
   if (r.status === "Pending") {
     actions.style.display = "flex";
     actions.innerHTML = `
-      <button class="btn primary" onclick="setTravelAllowanceStatus('${r.id}','Approved')">Approve</button>
-      <button class="btn outline" onclick="setTravelAllowanceStatus('${r.id}','Rejected')">Reject</button>
+      <button class="btn primary" data-action="travel-status" data-id="${escapeHtml(r.id)}" data-status="Approved">Approve</button>
+      <button class="btn outline" data-action="travel-status" data-id="${escapeHtml(r.id)}" data-status="Rejected">Reject</button>
     `;
   } else {
     actions.style.display = "none";
@@ -2445,7 +2471,7 @@ function renderLeaderboard() {
     const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
     const emp = getEmployee(r.empid || "");
     const name = r.staff_name || (emp && emp.name) || "Employee";
-    return `<div class="perf-podium-step rank-${rank}" data-rec-id="${r.id}">
+    return `<div class="perf-podium-step rank-${rank}" data-rec-id="${escapeHtml(r.id)}">
       <div class="perf-podium-medal">${medal}</div>
       <div class="perf-podium-avatar ${rank === 1 ? "gold" : rank === 2 ? "silver" : "bronze"}">${escapeHtml(getInitials(name))}</div>
       <div class="perf-podium-name">${escapeHtml(name)}</div>
@@ -2459,7 +2485,7 @@ function renderLeaderboard() {
     const emp = getEmployee(r.empid || "");
     const name = r.staff_name || (emp && emp.name) || "Employee";
     const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-    return `<div class="perf-rank-row${rank <= 3 ? " top3" : ""}" data-rec-id="${r.id}">
+    return `<div class="perf-rank-row${rank <= 3 ? " top3" : ""}" data-rec-id="${escapeHtml(r.id)}">
       <span class="perf-rank-num">${medal}</span>
       <span class="perf-rank-avatar">${escapeHtml(getInitials(name))}</span>
       <span class="perf-rank-name">${escapeHtml(name)}</span>
@@ -2479,8 +2505,9 @@ function downloadPerformanceCSV() {
     "Total Points"];
 
   const escape = (v) => {
-    const s = String(v == null ? "" : v);
-    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    const cell = String(v == null ? "" : v);
+    const safeCell = /^[\s]*[=+@-]/.test(cell) || /^[\t\r\n]/.test(cell) ? "'" + cell : cell;
+    return /[",\r\n]/.test(safeCell) ? '"' + safeCell.replace(/"/g, '""') + '"' : safeCell;
   };
 
   const rows = sorted.map((r, i) => [
@@ -2585,16 +2612,16 @@ function mountPerfEditor(root, record, onSaved) {
     const val = draft[a.key];
     const max = scaleDenom(a.key);
     const pct = Math.min(100, Math.round((val / max) * 100));
-    return `<div class="perf-tile" data-key="${a.key}">
+    return `<div class="perf-tile" data-key="${escapeHtml(a.key)}">
       <div class="perf-tile-head">
-        <span class="perf-tile-label">${a.label.replace(/\n/g, ' ')}</span>
-        <span class="perf-tile-val" id="perf-val-${a.key}">${val}</span>
+        <span class="perf-tile-label">${escapeHtml(a.label.replace(/\n/g, ' '))}</span>
+        <span class="perf-tile-val" id="perf-val-${escapeHtml(a.key)}">${val}</span>
       </div>
-      <input type="range" class="perf-slider" min="0" max="${Math.max(max * 1.5, 20)}" value="${val}" id="perf-slider-${a.key}" />
-      <div class="perf-tile-bar"><div class="perf-tile-bar-fill" id="perf-bar-${a.key}" style="width:${pct}%"></div></div>
+      <input type="range" class="perf-slider" min="0" max="${Math.max(max * 1.5, 20)}" value="${val}" id="perf-slider-${escapeHtml(a.key)}" />
+      <div class="perf-tile-bar"><div class="perf-tile-bar-fill" id="perf-bar-${escapeHtml(a.key)}" style="width:${pct}%"></div></div>
       <div class="perf-stepper">
-        <button class="perf-step-btn" data-d="-1" data-key="${a.key}" aria-label="decrease">−</button>
-        <button class="perf-step-btn" data-d="1" data-key="${a.key}" aria-label="increase">+</button>
+        <button class="perf-step-btn" data-d="-1" data-key="${escapeHtml(a.key)}" aria-label="decrease">−</button>
+        <button class="perf-step-btn" data-d="1" data-key="${escapeHtml(a.key)}" aria-label="increase">+</button>
       </div>
     </div>`;
   }).join("");
@@ -2698,11 +2725,11 @@ function renderManageColumnsModal(overlay) {
         const t = targets[a.key];
         const targetTxt = t != null ? `Target: ${t}` : "No target";
         return `
-        <div class="col-manage-row" data-key="${a.key}">
-          <span class="col-manage-name">${a.label.replace(/\n/g, " ")}<br><span class="col-target-val">${targetTxt}</span></span>
+        <div class="col-manage-row" data-key="${escapeHtml(a.key)}">
+          <span class="col-manage-name">${escapeHtml(a.label.replace(/\n/g, " "))}<br><span class="col-target-val">${escapeHtml(targetTxt)}</span></span>
           <div class="col-manage-actions">
-            <button class="btn outline sm col-target-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Set Target</button>
-            <button class="btn danger sm col-del-btn" data-key="${a.key}" data-label="${a.label.replace(/\n/g, " ").replace(/"/g, "&quot;")}">Delete</button>
+            <button class="btn outline sm col-target-btn" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label.replace(/\n/g, " "))}">Set Target</button>
+            <button class="btn danger sm col-del-btn" data-key="${escapeHtml(a.key)}" data-label="${escapeHtml(a.label.replace(/\n/g, " "))}">Delete</button>
           </div>
           <div class="col-target-editor" style="display:none;flex-basis:100%;gap:0.5rem;margin-top:0.5rem;align-items:center">
             <input class="input" type="number" step="any" min="0" placeholder="e.g. 10" value="${t != null ? t : ""}" style="max-width:160px" />
@@ -2825,7 +2852,7 @@ function confirmDeleteColumn(overlay, key, label) {
   const row = overlay.querySelector(`.col-manage-row[data-key="${key}"]`);
   if (!row) return;
   row.innerHTML = `
-    <span class="col-manage-name">Delete "${label}"? Are you sure?</span>
+    <span class="col-manage-name">Delete "${escapeHtml(label)}"? Are you sure?</span>
     <div class="col-manage-actions">
       <button class="btn danger sm col-del-yes">Yes</button>
       <button class="btn outline sm col-del-no">No</button>
@@ -3145,7 +3172,7 @@ function renderChat() {
   } else {
     convListEl.innerHTML = filtered.map(c => {
       const isActive = state.activeContactUuid === c.participantUuid;
-       return `<button class="chat-conv-btn ${isActive ? 'active' : ''}" data-contact-uuid="${c.participantUuid}" data-conv-id="${c.conversationId || ''}">
+       return `<button class="chat-conv-btn ${isActive ? 'active' : ''}" data-contact-uuid="${escapeHtml(c.participantUuid)}" data-conv-id="${escapeHtml(c.conversationId || '')}">
         ${avatarHTML(c.participantName, 'md', 'accent')}
         <div class="chat-conv-info">
           <div class="chat-conv-name">${escapeHtml(c.participantName)}${state.chatUnread[c.conversationId] ? `<span class="chat-unread-dot" title="${state.chatUnread[c.conversationId]} unread"></span>` : ''}</div>
@@ -3198,7 +3225,7 @@ function renderChat() {
           return `<div class="chat-bubble ${isMine ? 'mine' : 'their'}" style="position:relative">
             ${escapeHtml(m.text)}
             <div style="font-size:0.65rem;opacity:0.7;margin-top:0.25rem">${time}</div>
-            ${isMine ? `<button class="chat-delete-btn" data-msg-id="${m.id}" title="Delete message" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#9ca3af;font-size:12px;line-height:1">&times;</button>` : ''}
+            ${isMine ? `<button class="chat-delete-btn" data-msg-id="${escapeHtml(m.id)}" title="Delete message" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:var(--card);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;color:#9ca3af;font-size:12px;line-height:1">&times;</button>` : ''}
           </div>`;
         }).join('');
         // Bind delete buttons with inline confirmation
@@ -3393,7 +3420,7 @@ function renderTimetable() {
     const col = slotColMap[slot.id];
     const leftPct = (col / totalCols) * 100;
     const widthPct = (1 / totalCols) * 100;
-    return `<div style="position:absolute;top:${top + 2}px;left:calc(${leftPct}% + 4px);width:calc(${widthPct}% - 8px);height:${height}px;background:${slot.color};border-radius:0.5rem;padding:0.5rem 0.75rem;color:#fff;overflow:hidden;display:flex;flex-direction:column;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-size:0.8125rem">
+    return `<div style="position:absolute;top:${top + 2}px;left:calc(${leftPct}% + 4px);width:calc(${widthPct}% - 8px);height:${height}px;background:${safeScheduleColor(slot.color)};border-radius:0.5rem;padding:0.5rem 0.75rem;color:#fff;overflow:hidden;display:flex;flex-direction:column;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.15);font-size:0.8125rem">
       <div style="font-weight:700;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(slot.className)}</div>
       <div style="font-size:0.6875rem;opacity:0.85;margin-top:2px">${fmtTime(slot.startH, slot.startM)} - ${fmtTime(slot.endH, slot.endM)}</div>
     </div>`;
@@ -3786,8 +3813,8 @@ function dayRecordsTableHTML(recs) {
 
     return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
-      <td>${r.checkIn || "—"}</td>
-      <td>${r.checkOut || "—"}</td>
+      <td>${escapeHtml(r.checkIn || "—")}</td>
+      <td>${escapeHtml(r.checkOut || "—")}</td>
       <td>${punchHTML}</td>
       <td>${showHours ? r.hours + "h" : "—"}</td>
     </tr>`;
@@ -3812,12 +3839,12 @@ function renderLast7DaysTable() {
 
 function statCardClickable(stat, label, value, hint, accent = "primary") {
   const trendIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>`;
-  return `<div class="card stat-card clickable" data-stat="${stat}">
+  return `<div class="card stat-card clickable" data-stat="${escapeHtml(stat)}">
     <div class="stat-card-top">
-      <div><div class="stat-label">${label}</div><div class="stat-value">${value}</div></div>
-      <div class="stat-icon ${accent}">${trendIcon}</div>
+      <div><div class="stat-label">${escapeHtml(label)}</div><div class="stat-value">${escapeHtml(value)}</div></div>
+      <div class="stat-icon ${escapeHtml(accent)}">${trendIcon}</div>
     </div>
-    ${hint ? `<div class="stat-hint">${hint}</div>` : ""}
+    ${hint ? `<div class="stat-hint">${escapeHtml(hint)}</div>` : ""}
     <div class="stat-click-hint">Click for details →</div>
   </div>`;
 }
@@ -3827,7 +3854,7 @@ function renderEmployeeAnalytics() {
   if (!grid) return;
 
   grid.innerHTML = employees.map(emp => `
-    <div class="card employee-card analytics-emp-box" data-emp-id="${emp.id}">
+    <div class="card employee-card analytics-emp-box" data-emp-id="${escapeHtml(emp.id)}">
       <div class="employee-card-head">
         ${avatarHTML(emp.name, "lg")}
         <div>
@@ -3972,7 +3999,7 @@ function statRowHTML(r) {
     : '<span class="badge success">Present</span>';
   return `<div class="analytics-detail-row">
     <span>${formatDate(r.dateStr)}</span>
-    <span>${r.checkIn || '—'} → ${r.checkOut || '—'} ${badge}</span>
+    <span>${escapeHtml(r.checkIn || '—')} → ${escapeHtml(r.checkOut || '—')} ${badge}</span>
   </div>`;
 }
 
@@ -4003,7 +4030,7 @@ function showAnalyticsStatDetail(stat, stats) {
   } else if (stat === "hours") {
     title = `Hours Worked Breakdown (${stats.totalHours}h total)`;
     rows = presentRecs.map(r =>
-      `<div class="analytics-detail-row"><span>${formatDate(r.dateStr)}</span><span><b>${r.hours}h</b> · ${r.checkIn} → ${r.checkOut}</span></div>`
+      `<div class="analytics-detail-row"><span>${formatDate(r.dateStr)}</span><span><b>${r.hours}h</b> · ${escapeHtml(r.checkIn)} → ${escapeHtml(r.checkOut)}</span></div>`
     );
   } else if (stat === "punches") {
     title = `Punch (Login) Details (${stats.totalPunches} total)`;
@@ -4139,8 +4166,8 @@ function renderAnalyticsTable(stats) {
 
     return `<tr>
       <td>${formatDate(r.dateStr)} ${statusBadge}</td>
-      <td>${r.checkIn || "—"}</td>
-      <td>${r.checkOut || "—"}</td>
+      <td>${escapeHtml(r.checkIn || "—")}</td>
+      <td>${escapeHtml(r.checkOut || "—")}</td>
       <td>${punchHTML}</td>
       <td>${r.status === "absent" || r.status === "wfh" ? "—" : r.hours + "h"}</td>
     </tr>`;
@@ -4186,24 +4213,23 @@ async function syncEmployeesFromSupabase() {
     }
 
     const syncedList = profiles.map(p => {
-      const mock = employees.find(e => e.id === p.empid);
       const det = detailsMap[p.empid] || {};
 
       return {
         id: p.empid,
         name: p.name,
-        title: det.designation || mock?.title || (p.role === 'hr' ? 'HR Manager' : 'CAD Trainer'),
-        description: det.description || mock?.about || 'Employee profile stored in system.',
-        department: det.department || p.department || 'Training',
+        title: det.designation || '',
+        description: det.description || '',
+        department: det.department || p.department || '',
         email: det.email || p.email || `${p.empid}@caddtech.com`,
-        phone: det.phone || p.phone || '+91 99001 22334',
+        phone: det.phone || p.phone || '',
         branch: det.branch || null,
-        location: det.location || p.location || 'Bengaluru',
-        manager: mock ? mock.manager : 'Priya Nair',
-        joinDate: det.join_date || p.join_date || '2024-01-01',
+        location: det.location || p.location || '',
+        manager: p.manager || '',
+        joinDate: det.join_date || p.join_date || '',
         employmentType: det.employment_type || p.employment_type || 'Full-time',
-        status: mock ? mock.status : 'Active',
-        about: det.description || mock?.about || 'Employee profile stored in system.',
+        status: 'Active',
+        about: det.description || '',
         shiftCheckin: p.shift_checkin || null,
         shiftCheckout: p.shift_checkout || null,
         saturdayPlan: p.saturday_plan || 'every_saturday_work',
@@ -4296,9 +4322,9 @@ function renderProfile() {
   if (nameEl) nameEl.value = me.name || "";
   if (emailEl) emailEl.value = me.email || "";
   if (phoneEl) phoneEl.value = me.phone || "";
-  if (deptEl) deptEl.value = me.department || "Training";
+  if (deptEl) deptEl.value = me.department || "";
   if (locEl) locEl.value = me.location || "";
-  if (branchEl) branchEl.value = me.branch || "Avadi";
+  if (branchEl) branchEl.value = me.branch || "";
   if (desigEl) desigEl.value = me.title || "";
   if (descEl) descEl.value = me.description || me.about || "";
 
