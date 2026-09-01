@@ -4,7 +4,7 @@ Vanilla HTML/CSS/JavaScript HR and employee dashboards, backed by Supabase Auth/
 
 ## Static Vercel deployment
 
-This repository now supports static Vercel hosting. Vercel serves the site and the small `/api/config` function supplies only the public Supabase URL and publishable key. Set `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` in the Vercel project's Environment Variables before deploying. Do not set `SUPABASE_SERVICE_ROLE_KEY` in Vercel for this static configuration.
+This repository supports static Vercel hosting and direct local HTML use. `js/config.js` contains only the public Supabase project URL and publishable/anon key required by browsers. Never place a service-role key or other secret in this file.
 
 The static deployment signs users in directly with Supabase Auth. It retains database RLS, restrictive browser headers, safe UI rendering, and protected pages, but it does **not** provide the custom Redis-backed login rate limit or browser-based employee provisioning. Create employee accounts through the Supabase administrator and ensure RLS policies from `setup/security_upgrade.sql` are applied.
 

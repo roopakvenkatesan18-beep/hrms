@@ -1,5 +1,4 @@
 {
-  "rewrites": [{ "source": "/js/config.js", "destination": "/api/config" }],
   "headers": [{
     "source": "/(.*)",
     "headers": [
