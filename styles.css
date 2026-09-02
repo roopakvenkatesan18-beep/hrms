@@ -2282,35 +2282,21 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
 .perf-podium-step.rank-3 .perf-podium-base { height: 40px; background: linear-gradient(180deg, #d6a06a, #b45309); }
 .perf-podium-step.rank-1 .perf-podium-avatar { width: 68px; height: 68px; font-size: 1.375rem; }
 
-.perf-rank-list { padding: 0.75rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.4rem; }
-.perf-rank-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.55rem 0.75rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  transition: background 0.15s ease;
-}
-.perf-rank-row:hover { background: var(--muted); }
-.perf-rank-row.top3 { background: #fffbeb; border-color: #fde68a; }
-.perf-rank-row.top3:hover { background: #fef3c7; }
-.perf-rank-num { font-weight: 700; color: var(--muted-foreground); font-size: 0.8125rem; width: 2rem; }
-.perf-rank-avatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  background: var(--secondary);
-  color: var(--secondary-foreground);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 0.75rem;
-  flex-shrink: 0;
-}
-.perf-rank-name { flex: 1; font-weight: 500; font-size: 0.875rem; color: var(--foreground); }
-.perf-rank-pts { font-weight: 600; font-size: 0.8125rem; color: var(--primary); }
+.perf-leaderboard-table-wrap { overflow-x: auto; padding: 0.75rem 1rem 1rem; }
+.perf-leaderboard-table { width: 100%; min-width: max-content; border-collapse: separate; border-spacing: 0; font-size: 0.8125rem; }
+.perf-leaderboard-table th,
+.perf-leaderboard-table td { padding: 0.65rem 0.75rem; border-bottom: 1px solid var(--border); text-align: center; white-space: nowrap; }
+.perf-leaderboard-table thead th { background: var(--muted); color: var(--muted-foreground); font-weight: 700; }
+.perf-leaderboard-table tbody tr { transition: background 0.15s ease; }
+.perf-leaderboard-table tbody tr:hover { background: var(--muted); }
+.perf-leaderboard-table tbody tr.top3.rank-1 { background: #fffbeb; }
+.perf-leaderboard-table tbody tr.top3.rank-2 { background: #f8fafc; }
+.perf-leaderboard-table tbody tr.top3.rank-3 { background: #fff7ed; }
+.perf-leaderboard-rank { font-weight: 700; color: var(--muted-foreground); }
+.perf-leaderboard-table .perf-leaderboard-name { text-align: left; color: var(--foreground); font-weight: 600; }
+.perf-leaderboard-table .perf-category-winner { background: #ecfdf5; color: #047857; font-weight: 700; }
+.perf-leading-count,
+.perf-total-points { color: var(--primary); font-weight: 700; }
 
 /* ===== Sunday Leave Popup ===== */
 .sunday-leave-pop {
@@ -3097,19 +3083,14 @@ th { font-weight: 600; color: var(--muted-foreground); font-size: 0.75rem; text-
     font-size: 0.625rem;
   }
   
-  .perf-rank-row {
-    flex-wrap: wrap;
-    gap: 0.5rem;
+  .perf-leaderboard-table-wrap {
+    padding: 0.5rem;
   }
-  
-  .perf-rank-name {
-    flex: 1 1 100%;
+
+  .perf-leaderboard-table {
+    font-size: 0.75rem;
   }
-  
-  .perf-rank-pts {
-    margin-left: auto;
-  }
-  
+
   .sunday-leave-pop {
     flex-wrap: wrap;
     padding: 0.75rem;

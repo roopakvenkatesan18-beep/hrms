@@ -54,6 +54,9 @@ try {
       ('${adminId}', 'qa-hr', 'QA HR', 'hr', 'Training'),
       ('${employeeId}', 'qa-employee', 'QA Employee', 'employee', 'Training'),
       ('${otherId}', 'qa-other', 'QA Other', 'employee', 'Training');
+    INSERT INTO public.staff_performance (empid, staff_name) VALUES
+      ('qa-employee', 'QA Employee'),
+      ('qa-other', 'QA Other');
   `);
   const schemaScripts = [
     'performance_reset.sql', 'leave_schema.sql', 'travel_allowance_schema.sql',
@@ -129,7 +132,17 @@ try {
     const ownRecord = await database.query("SELECT staff_name FROM public.staff_performance WHERE empid = 'qa-employee'");
     assert.equal(ownRecord.rows[0].staff_name, 'QA Employee');
   });
-  console.log('PASS: HR profile management and employee performance onboarding remain available');
+  await asRole('authenticated', adminId, async () => {
+    const updated = await database.query("UPDATE public.staff_performance SET points = 7 WHERE empid = 'qa-other' RETURNING points");
+    assert.equal(updated.rows[0].points, 7);
+  });
+  await asRole('authenticated', employeeId, async () => {
+    const ownUpdate = await database.query("UPDATE public.staff_performance SET points = 4 WHERE empid = 'qa-employee' RETURNING points");
+    assert.equal(ownUpdate.rows[0].points, 4);
+    const otherUpdate = await database.query("UPDATE public.staff_performance SET points = 99 WHERE empid = 'qa-other' RETURNING points");
+    assert.equal(otherUpdate.rows.length, 0);
+  });
+  console.log('PASS: HR can edit all performance points; employees can edit only their own');
 
   await asRole('authenticated', '30000000-0000-0000-0000-000000000001', async () => {
     for (const table of ['profiles', 'staff_performance', 'announcements', 'perf_targets', 'app_meta']) {

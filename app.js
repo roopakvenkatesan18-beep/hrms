@@ -25,6 +25,7 @@ const state = {
   chartType: "Bar",
   pieChart: null,
   hoursChart: null,
+  adminAttendanceChart: null,
 
   last6Months: [],
   calMonthOffset: 0,
@@ -692,13 +693,13 @@ function renderAdminDashboard() {
   `).join("");
 
   // Leaderboard (top 5)
-  const sorted = [...state.staffPerformance].sort((a, b) => totalPoints(b) - totalPoints(a)).slice(0, 5);
-  document.getElementById("admin-dash-reviews").innerHTML = sorted.map((r, i) => `
+  const sorted = getPerformanceRanking().entries.slice(0, 5);
+  document.getElementById("admin-dash-reviews").innerHTML = sorted.map((entry, i) => `
     <div class="list-row" style="border:none;padding:0.5rem 0">
       <div style="width:24px;font-weight:700;color:${i === 0 ? '#f59e0b' : i < 3 ? '#94a3b8' : 'var(--muted-foreground)'}">#${i + 1}</div>
       <div class="list-row-info">
-        <div class="title">${escapeHtml(r.staff_name)}</div>
-        <div class="sub">${totalPoints(r)} pts</div>
+        <div class="title">${escapeHtml(entry.record.staff_name)}</div>
+        <div class="sub">${entry.leadingCategories.length} leads · ${entry.total} pts</div>
       </div>
       <div class="perf-rank-badge">${i === 0 ? '🏆' : i < 3 ? '⭐' : ''}</div>
     </div>
@@ -1225,12 +1226,12 @@ function renderAttendanceAdmin() {
   const late = displayRows.filter(a => resolveAttendance(a.employeeId, todayStr).status === "Late").length;
   const withData = new Set(state.attendance.map(a => a.employeeId)).size;
   const totalStaff = withData || employees.length;
+  const absent = Math.max(0, totalStaff - present);
 
   document.getElementById("att-admin-stats").innerHTML =
     statCardHTML("Present Today", `${present}/${totalStaff}`, "Present / With data", "chart5") +
     statCardHTML("On Time", onTime, null, "primary") +
     statCardHTML("Late Arrivals", late, null, "chart3");
-
   const tbody = document.getElementById("att-admin-table-body");
   if (displayRows.length) {
     tbody.innerHTML = displayRows.map(a => {
@@ -2439,6 +2440,26 @@ function totalPoints(r) {
   return getPerfAttrs().reduce((sum, a) => sum + (parseInt(r[a.key]) || 0), 0);
 }
 
+function getPerformanceRanking() {
+  const attrs = getPerfAttrs();
+  const categoryMax = Object.fromEntries(attrs.map(attr => [
+    attr.key,
+    Math.max(0, ...state.staffPerformance.map(record => parseInt(record[attr.key]) || 0))
+  ]));
+  const entries = state.staffPerformance.map((record, originalIndex) => {
+    const leadingCategories = attrs.filter(attr => {
+      const value = parseInt(record[attr.key]) || 0;
+      return categoryMax[attr.key] > 0 && value === categoryMax[attr.key];
+    });
+    return { record, originalIndex, leadingCategories, total: attrs.reduce((sum, attr) => sum + (parseInt(record[attr.key]) || 0), 0) };
+  }).sort((a, b) =>
+    b.leadingCategories.length - a.leadingCategories.length ||
+    b.total - a.total ||
+    a.originalIndex - b.originalIndex
+  );
+  return { attrs, entries };
+}
+
 function maxForAttr(key) {
   let max = 0;
   state.staffPerformance.forEach(r => {
@@ -2458,16 +2479,17 @@ function scaleDenom(key) {
 }
 
 function renderLeaderboard() {
-  const sorted = [...state.staffPerformance].sort((a, b) => totalPoints(b) - totalPoints(a));
-  if (sorted.length === 0) {
+  const { attrs, entries } = getPerformanceRanking();
+  if (entries.length === 0) {
     return `<p class="empty-state">No performance data yet.</p>`;
   }
 
-  const top3 = sorted.slice(0, 3);
+  const top3 = entries.slice(0, 3);
   // Visual order: 2nd, 1st, 3rd
   const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
-  const podium = podiumOrder.map(r => {
-    const rank = sorted.indexOf(r) + 1;
+  const podium = podiumOrder.map(entry => {
+    const r = entry.record;
+    const rank = entries.indexOf(entry) + 1;
     const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : "🥉";
     const emp = getEmployee(r.empid || "");
     const name = r.staff_name || (emp && emp.name) || "Employee";
@@ -2475,34 +2497,46 @@ function renderLeaderboard() {
       <div class="perf-podium-medal">${medal}</div>
       <div class="perf-podium-avatar ${rank === 1 ? "gold" : rank === 2 ? "silver" : "bronze"}">${escapeHtml(getInitials(name))}</div>
       <div class="perf-podium-name">${escapeHtml(name)}</div>
-      <div class="perf-podium-pts">${totalPoints(r)} <span>pts</span></div>
+      <div class="perf-podium-pts">${entry.leadingCategories.length} <span>leads</span> · ${entry.total} <span>pts</span></div>
       <div class="perf-podium-base"></div>
     </div>`;
   }).join("");
 
-  const rows = sorted.map((r, i) => {
+  const headers = attrs.map(attr => `<th scope="col">${escapeHtml(attr.label.replace(/\n/g, " "))}</th>`).join("");
+  const rows = entries.map((entry, i) => {
+    const r = entry.record;
     const rank = i + 1;
     const emp = getEmployee(r.empid || "");
     const name = r.staff_name || (emp && emp.name) || "Employee";
     const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : `#${rank}`;
-    return `<div class="perf-rank-row${rank <= 3 ? " top3" : ""}" data-rec-id="${escapeHtml(r.id)}">
-      <span class="perf-rank-num">${medal}</span>
-      <span class="perf-rank-avatar">${escapeHtml(getInitials(name))}</span>
-      <span class="perf-rank-name">${escapeHtml(name)}</span>
-      <span class="perf-rank-pts">${totalPoints(r)} pts</span>
-    </div>`;
+    const categoryCells = attrs.map(attr => {
+      const isWinner = entry.leadingCategories.some(leader => leader.key === attr.key);
+      return `<td class="${isWinner ? "perf-category-winner" : ""}"${isWinner ? ` title="Category leader: ${escapeHtml(attr.label.replace(/\n/g, " "))}"` : ""}>${parseInt(r[attr.key]) || 0}${isWinner ? " ★" : ""}</td>`;
+    }).join("");
+    return `<tr class="perf-leaderboard-row${rank <= 3 ? ` top3 rank-${rank}` : ""}" data-rec-id="${escapeHtml(r.id)}">
+      <td class="perf-leaderboard-rank">${medal}</td>
+      <th scope="row" class="perf-leaderboard-name">${escapeHtml(name)}</th>
+      ${categoryCells}
+      <td class="perf-leading-count">${entry.leadingCategories.length}</td>
+      <td class="perf-total-points">${entry.total}</td>
+    </tr>`;
   }).join("");
 
-  return `<div class="perf-podium">${podium}</div><div class="perf-rank-list">${rows}</div>`;
+  return `<div class="perf-podium">${podium}</div>
+    <div class="perf-leaderboard-table-wrap">
+      <table class="perf-leaderboard-table">
+        <thead><tr><th scope="col">Rank</th><th scope="col">Staff Name</th>${headers}<th scope="col">Leading Categories</th><th scope="col">Total Points</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 function downloadPerformanceCSV() {
-  const attrs = getPerfAttrs();
-  const sorted = [...state.staffPerformance].sort((a, b) => totalPoints(b) - totalPoints(a));
+  const { attrs, entries } = getPerformanceRanking();
 
   const header = ["Rank", "Employee Name", "Employee ID",
     ...attrs.map(a => a.label.replace(/\n/g, " ")),
-    "Total Points"];
+    "Leading Categories", "Total Points"];
 
   const escape = (v) => {
     const cell = String(v == null ? "" : v);
@@ -2510,12 +2544,13 @@ function downloadPerformanceCSV() {
     return /[",\r\n]/.test(safeCell) ? '"' + safeCell.replace(/"/g, '""') + '"' : safeCell;
   };
 
-  const rows = sorted.map((r, i) => [
+  const rows = entries.map((entry, i) => [
     i + 1,
-    r.staff_name || getEmployee(r.empid || "").name,
-    r.empid || "",
-    ...attrs.map(a => parseInt(r[a.key]) || 0),
-    totalPoints(r)
+    entry.record.staff_name || getEmployee(entry.record.empid || "").name,
+    entry.record.empid || "",
+    ...attrs.map(a => parseInt(entry.record[a.key]) || 0),
+    entry.leadingCategories.length,
+    entry.total
   ]);
 
   const csv = [header, ...rows]
@@ -2536,14 +2571,24 @@ function downloadPerformanceCSV() {
 }
 
 function getPerfRank(record) {
-  const sorted = [...state.staffPerformance].sort((a, b) => totalPoints(b) - totalPoints(a));
-  const idx = sorted.findIndex(r => String(r.id) === String(record.id));
-  return idx < 0 ? sorted.length : idx + 1;
+  const entries = getPerformanceRanking().entries;
+  const idx = entries.findIndex(entry => String(entry.record.id) === String(record.id));
+  return idx < 0 ? entries.length : idx + 1;
+}
+
+function canEditPerformanceRecord(record) {
+  if (state.role === "admin") return true;
+  return state.role === "employee" &&
+    String(record?.empid || "").trim() === String(CURRENT_USER_ID || "").trim();
 }
 
 /* Shared, interactive performance editor.
    `root` is a container element; `onSaved(updates)` is called after a successful save. */
 function mountPerfEditor(root, record, onSaved) {
+  if (!canEditPerformanceRecord(record)) {
+    root.innerHTML = '<div class="empty-state">You can only edit your own performance points.</div>';
+    return;
+  }
   const attrs = getPerfAttrs();
   const draft = {};
   const original = {};
@@ -2643,6 +2688,10 @@ function mountPerfEditor(root, record, onSaved) {
   });
 
   root.querySelector("#perf-save").addEventListener("click", async (e) => {
+    if (!canEditPerformanceRecord(record)) {
+      showToast("You are not allowed to edit these performance points");
+      return;
+    }
     const updates = {};
     attrs.forEach(a => { const v = draft[a.key] || 0; if (v !== original[a.key]) updates[a.key] = v; });
     if (Object.keys(updates).length === 0) { if (onSaved) onSaved(null); return; }
@@ -2674,6 +2723,7 @@ function mountPerfEditor(root, record, onSaved) {
 }
 
 function openPerfEditorModal(record) {
+  if (state.role !== "admin") return;
   let overlay = document.getElementById("perf-editor-modal");
   if (!overlay) {
     overlay = document.createElement("div");
@@ -2900,13 +2950,13 @@ async function ensureMonthlyPerfReset() {
 }
 
 function renderPerformanceAdmin() {
-  const top = [...state.staffPerformance].sort((a, b) => totalPoints(b) - totalPoints(a));
-  const avgPts = top.length ? Math.round(top.reduce((s, r) => s + totalPoints(r), 0) / top.length) : 0;
+  const top = getPerformanceRanking().entries;
+  const avgPts = top.length ? Math.round(top.reduce((sum, entry) => sum + entry.total, 0) / top.length) : 0;
 
   document.getElementById("perf-admin-stats").innerHTML =
     statCardHTML("Total Staff", top.length, null, "chart3") +
     statCardHTML("Avg Points", avgPts, "Per staff", "chart5") +
-    statCardHTML("Top Performer", top.length ? `${top[0].staff_name} (${totalPoints(top[0])} pts)` : "—", null, "accent");
+    statCardHTML("Top Performer", top.length ? `${top[0].record.staff_name} (${top[0].total} pts)` : "—", null, "accent");
 
   document.getElementById("perf-admin-content").innerHTML = `
     <div class="card" style="margin-top:1.5rem">
@@ -2924,7 +2974,7 @@ function renderPerformanceAdmin() {
   document.getElementById("perf-download-btn").addEventListener("click", downloadPerformanceCSV);
 
   const lb = document.getElementById("perf-admin-leaderboard");
-  lb.querySelectorAll(".perf-podium-step, .perf-rank-row").forEach((row) => {
+  lb.querySelectorAll(".perf-podium-step, .perf-leaderboard-row").forEach((row) => {
     const recId = row.dataset.recId;
     const rec = state.staffPerformance.find(r => String(r.id) === String(recId));
     if (!rec) return;

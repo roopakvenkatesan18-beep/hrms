@@ -115,8 +115,37 @@ test('CSV exports neutralize formulas while preserving ordinary names and numeri
   const harness = createHarness();
   harness.run('state.staffPerformance = [{ id: 1, empid: "=1+1", staff_name: "=2+2", projects: 5 }, { id: 2, empid: "staff2", staff_name: "Ordinary Name", projects: 3 }]; downloadPerformanceCSV();');
   const csv = await harness.csv();
-  assert.ok(csv.includes("'=2+2,'=1+1,5,5"));
-  assert.ok(csv.includes('Ordinary Name,staff2,3,3'));
+  assert.ok(csv.includes("'=2+2,'=1+1,5,1,5"));
+  assert.ok(csv.includes('Ordinary Name,staff2,3,0,3'));
+});
+
+test('performance leaderboard ranks category leaders before total points and renders the full table', () => {
+  const harness = createHarness();
+  harness.run(`state.staffPerformance = [
+    { id: 1, empid: "one", staff_name: "One", projects: 10, demo: 1 },
+    { id: 2, empid: "two", staff_name: "Two", projects: 9, demo: 9 },
+    { id: 3, empid: "three", staff_name: "Three", projects: 8, demo: 8 }
+  ]`);
+  const markup = harness.run('renderLeaderboard()');
+  assert.ok(markup.includes('<table class="perf-leaderboard-table">'));
+  assert.ok(markup.includes('Leading Categories'));
+  assert.ok(markup.includes('Total Points'));
+  assert.ok(markup.includes('class="perf-leaderboard-row top3 rank-1" data-rec-id="2"'));
+  assert.ok(markup.includes('class="perf-leaderboard-row top3 rank-2" data-rec-id="1"'));
+  assert.ok(markup.includes('class="perf-leaderboard-row top3 rank-3" data-rec-id="3"'));
+  assert.equal((markup.match(/perf-category-winner/g) || []).length, 2);
+  assert.equal(harness.run('getPerfRank(state.staffPerformance[1])'), 1);
+});
+
+test('performance editing allows admins any record and employees only their own', () => {
+  const harness = createHarness();
+  harness.run('var CURRENT_USER_ID = "employee-one"; state.role = "admin";');
+  assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-two" })'), true);
+  harness.run('state.role = "employee";');
+  assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-one" })'), true);
+  assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-two" })'), false);
+  harness.run('openPerfEditorModal({ empid: "employee-two", staff_name: "Employee Two" })');
+  assert.equal(harness.getElement('perf-editor-modal').innerHTML, '');
 });
 
 test('employee onboarding rejects eleven-character passwords and accepts twelve', async () => {
