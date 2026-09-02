@@ -2577,7 +2577,6 @@ function getPerfRank(record) {
 }
 
 function canEditPerformanceRecord(record) {
-  if (state.role === "admin") return true;
   return state.role === "employee" &&
     String(record?.empid || "").trim() === String(CURRENT_USER_ID || "").trim();
 }
@@ -2720,38 +2719,6 @@ function mountPerfEditor(root, record, onSaved) {
   });
 
   setRing();
-}
-
-function openPerfEditorModal(record) {
-  if (state.role !== "admin") return;
-  let overlay = document.getElementById("perf-editor-modal");
-  if (!overlay) {
-    overlay = document.createElement("div");
-    overlay.className = "modal-overlay";
-    overlay.id = "perf-editor-modal";
-    overlay.style.display = "none";
-    document.body.appendChild(overlay);
-  }
-  overlay.innerHTML = `<div class="modal perf-editor-modal">
-    <div class="perf-editor-head">
-      <div>
-        <h2>${escapeHtml(record.staff_name || 'Employee')}</h2>
-        <p class="sub">HR · edit performance points</p>
-      </div>
-      <button class="modal-close-x" id="pe-close">×</button>
-    </div>
-    <div id="pe-root"></div>
-  </div>`;
-
-  mountPerfEditor(overlay.querySelector("#pe-root"), record, async () => {
-    overlay.style.display = "none";
-    await loadStaffPerformance();
-    renderPerformanceAdmin();
-  });
-
-  overlay.querySelector("#pe-close").addEventListener("click", () => overlay.style.display = "none");
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.style.display = "none"; });
-  overlay.style.display = "flex";
 }
 
 function openAddAttributeModal() {
@@ -2972,16 +2939,6 @@ function renderPerformanceAdmin() {
 
   document.getElementById("perf-add-attr-btn").addEventListener("click", openAddAttributeModal);
   document.getElementById("perf-download-btn").addEventListener("click", downloadPerformanceCSV);
-
-  const lb = document.getElementById("perf-admin-leaderboard");
-  lb.querySelectorAll(".perf-podium-step, .perf-leaderboard-row").forEach((row) => {
-    const recId = row.dataset.recId;
-    const rec = state.staffPerformance.find(r => String(r.id) === String(recId));
-    if (!rec) return;
-    row.style.cursor = "pointer";
-    row.title = "Click to edit points";
-    row.addEventListener("click", () => openPerfEditorModal(rec));
-  });
 }
 
 function renderPerformanceEmployee() {

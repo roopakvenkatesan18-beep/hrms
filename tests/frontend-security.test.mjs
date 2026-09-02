@@ -137,15 +137,13 @@ test('performance leaderboard ranks category leaders before total points and ren
   assert.equal(harness.run('getPerfRank(state.staffPerformance[1])'), 1);
 });
 
-test('performance editing allows admins any record and employees only their own', () => {
+test('performance editing is available only to employees for their own record', () => {
   const harness = createHarness();
   harness.run('var CURRENT_USER_ID = "employee-one"; state.role = "admin";');
-  assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-two" })'), true);
+  assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-two" })'), false);
   harness.run('state.role = "employee";');
   assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-one" })'), true);
   assert.equal(harness.run('canEditPerformanceRecord({ empid: "employee-two" })'), false);
-  harness.run('openPerfEditorModal({ empid: "employee-two", staff_name: "Employee Two" })');
-  assert.equal(harness.getElement('perf-editor-modal').innerHTML, '');
 });
 
 test('employee onboarding rejects eleven-character passwords and accepts twelve', async () => {
